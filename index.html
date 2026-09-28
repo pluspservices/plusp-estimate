@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="+P Estimate"/>
+<meta name="theme-color" content="#0f1419"/>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="apple-touch-icon" href="icon-180.png"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>+P Photo Estimate</title>
+<style>
+:root{--bg:#0f1419;--card:#1a2332;--text:#f2f5f8;--muted:#9aa8b8;--accent:#e8b84a;--ok:#3dd68c;--line:#2a3a4f;--warn:#ff8f6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);
+padding:max(14px,env(safe-area-inset-top)) 14px max(28px,env(safe-area-inset-bottom))}
+h1{font-size:1.25rem;margin:0 0 2px}
+.sub{color:var(--muted);font-size:.88rem;margin:0 0 14px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:.78rem;color:var(--muted);margin:0 0 6px;font-weight:500}
+input,textarea,select{width:100%;font-size:1.05rem;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f1419;color:var(--text);margin-bottom:10px}
+textarea{min-height:64px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.row4{display:grid;grid-template-columns:2fr 1.2fr 0.7fr 1fr;gap:8px}
+@media (max-width:640px){.row4{grid-template-columns:1fr 1fr}}
+.photos{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.photos img{height:72px;width:72px;object-fit:cover;border-radius:10px;border:1px solid var(--line);flex-shrink:0}
+.btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;font-size:1rem;font-weight:650;background:var(--accent);color:#1a1200;margin-top:4px}
+.btn.secondary{background:#243044;color:var(--text);border:1px solid var(--line);margin-top:8px}
+.btn.small{padding:10px;font-size:.9rem;margin-top:0}
+.line{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #243044;font-size:.95rem}
+.line:last-child{border-bottom:none}
+.totalRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;margin-top:8px}
+.total{font-size:1.35rem;font-weight:700;color:var(--accent);margin:0}
+.calcLabel{font-size:.75rem;color:var(--muted);margin-bottom:4px}
+.section{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:12px 0 4px}
+.muted{color:var(--muted);font-size:.82rem}
+.note{color:var(--warn);font-size:.82rem;margin-top:6px}
+.benefits{margin:10px 0 0;padding:0;list-style:none}
+.benefits li{padding:6px 0;color:var(--ok);font-size:.92rem}
+.benefits li::before{content:"✓ ";}
+.itemized{white-space:pre-wrap;background:#0f1419;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:.92rem;line-height:1.45}
+.file{position:relative;overflow:hidden;display:block;text-align:center}
+.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.chip{display:inline-block;background:#243044;color:var(--muted);font-size:.75rem;padding:4px 8px;border-radius:999px;margin:0 4px 8px 0}
+.hint{font-size:.75rem;color:var(--muted);margin:-4px 0 10px}
+.discRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.discRow input{font-size:.9rem;padding:8px 10px;margin-bottom:6px}
+.discRow label{font-size:.7rem;margin-bottom:4px}
+.override input{font-size:.9rem;padding:8px 10px}
+.overridePanel{display:none;margin-top:8px;padding-top:8px;border-top:1px solid #243044}
+.overridePanel.open{display:block}
+.btn.toggle{background:#243044;color:var(--text);border:1px solid var(--line);margin-top:8px}
+.btn.tiny{display:inline-block;width:auto;padding:5px 10px;font-size:.72rem;font-weight:600;margin:0;border-radius:8px}
+.lineAdj{display:none;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:6px 0 10px;border-bottom:1px solid #243044}
+.lineAdj.open{display:grid}
+.lineAdj label{font-size:.65rem;margin-bottom:2px}
+.lineAdj input{font-size:.85rem;padding:7px 8px;margin-bottom:0}
+.lineHead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0 2px;font-size:.95rem}
+.lineHead .amt{font-weight:700}
+.lineHead .left{display:flex;flex-direction:column;gap:2px}
+.lineMuted{font-size:.72rem;color:var(--muted)}
+.treeList{margin:8px 0;padding:0;list-style:none}
+.treeList li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #243044;font-size:.9rem}
+.treeList button{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:.8rem}
+.previewBalls{font-size:1.1rem;font-weight:650;color:var(--accent);margin:4px 0 10px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin-bottom:12px}
+.split > .card{margin-bottom:0}
+@media (max-width:780px){.split{grid-template-columns:1fr}.split > .card{margin-bottom:12px}}
+.calcBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch}
+.calcBtns .btn{width:100%;padding:8px 6px;font-size:.72rem;font-weight:600;margin:0;line-height:1.25;border-radius:8px}
+.split .row3{grid-template-columns:1fr 1fr 1fr;gap:6px}
+.split .row3 input,.split .row3 select{font-size:.9rem;padding:8px 6px;margin-bottom:8px}
+.split .row3 label{font-size:.68rem;margin-bottom:4px}
+
+</style>
+</head>
+<body>
+<h1>+P Photo Estimate</h1>
+<p class="sub">Your rates · itemized · first hang + rehang</p>
+
+<div class="card">
+  <div class="row">
+    <div>
+      <label>First name</label>
+      <input id="firstName" placeholder="First" />
+    </div>
+    <div>
+      <label>Last name</label>
+      <input id="lastName" placeholder="Last" />
+    </div>
+  </div>
+  <label>Street address</label>
+  <input id="street" placeholder="123 Main St" />
+  <div class="row4">
+    <div>
+      <label>City</label>
+      <input id="city" placeholder="City" />
+    </div>
+    <div>
+      <label>State</label>
+      <input id="state" value="TX" maxlength="2" />
+    </div>
+    <div>
+      <label>ZIP</label>
+      <input id="zip" inputmode="numeric" placeholder="75000" />
+    </div>
+  </div>
+  <label>Notes from photos</label>
+  <textarea id="notes" placeholder="Peaks, access, color preference…"></textarea>
+  <span class="chip">First hang: roof $5 · glue $6 · balls $25</span>
+  <span class="chip">Rehang: roof $2.50 · glue $3.50 · balls $25</span>
+  <div class="file btn secondary" style="margin-top:0">
+    Add house photos
+    <input id="photos" type="file" accept="image/*" multiple />
+  </div>
+  <div class="photos" id="preview"></div>
+</div>
+
+<div class="split">
+<div class="card">
+  <div class="section" style="margin-top:0">Measurements</div>
+  <label>Roofline (ft)</label>
+  <input id="roofFt" type="number" inputmode="decimal" min="0" step="1" value="0" />
+  <div class="row3">
+    <div>
+      <label>Windows (ft)</label>
+      <input id="winFt" type="number" inputmode="decimal" min="0" step="1" value="0" />
+    </div>
+    <div>
+      <label>Archways (ft)</label>
+      <input id="archFt" type="number" inputmode="decimal" min="0" step="1" value="0" />
+    </div>
+    <div>
+      <label>Garages (ft)</label>
+      <input id="garFt" type="number" inputmode="decimal" min="0" step="1" value="0" />
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Tree balls (25 ft)</label>
+      <input id="treeBalls" type="number" inputmode="numeric" min="0" step="1" value="0" />
+    </div>
+    <div>
+      <label>Bush balls (25 ft)</label>
+      <input id="bushBalls" type="number" inputmode="numeric" min="0" step="1" value="0" />
+    </div>
+  </div>
+  <label>Storage tubs (optional)</label>
+  <input id="tubs" type="number" inputmode="numeric" min="0" step="1" value="0" />
+</div>
+
+<div class="card">
+  <div class="section" style="margin-top:0">Tree calculator (trunk spiral)</div>
+  <p class="muted">Trunks only, max 10 ft high. Adds into Tree balls on the left.</p>
+  <div class="row3">
+    <div>
+      <label>Diameter (inches)</label>
+      <input id="treeDiam" type="number" inputmode="decimal" min="1" step="0.5" value="8" />
+    </div>
+    <div>
+      <label>Height (feet)</label>
+      <input id="treeHeight" type="number" inputmode="decimal" min="0.5" max="10" step="0.5" value="10" />
+    </div>
+    <div>
+      <label>Spacing</label>
+      <select id="treeSpacing">
+        <option value="1">1"</option>
+        <option value="1.5" selected>1.5"</option>
+        <option value="2">2"</option>
+      </select>
+    </div>
+  </div>
+  <div class="previewBalls" id="treePreview">— balls for this tree</div>
+  <div class="row calcBtns">
+    <button class="btn small" type="button" id="addTree">Add → tree balls</button>
+    <button class="btn secondary small" type="button" id="setTree">Replace tree balls</button>
+  </div>
+  <ul class="treeList" id="treeLog"></ul>
+
+  <div class="section">Bush calculator (wrap spiral)</div>
+  <p class="muted">Length around the bush × height, spaced 3–5". Adds into Bush balls on the left.</p>
+  <div class="row3">
+    <div>
+      <label>Length around (ft)</label>
+      <input id="bushPerim" type="number" inputmode="decimal" min="0.5" step="0.5" value="6" />
+    </div>
+    <div>
+      <label>Height (feet)</label>
+      <input id="bushHeight" type="number" inputmode="decimal" min="0.5" step="0.5" value="3" />
+    </div>
+    <div>
+      <label>Spacing</label>
+      <select id="bushSpacing">
+        <option value="3">3"</option>
+        <option value="4" selected>4"</option>
+        <option value="5">5"</option>
+      </select>
+    </div>
+  </div>
+  <div class="previewBalls" id="bushPreviewText">— balls for this bush</div>
+  <div class="row calcBtns">
+    <button class="btn small" type="button" id="addBush">Add → bush balls</button>
+    <button class="btn secondary small" type="button" id="setBush">Replace bush balls</button>
+  </div>
+  <ul class="treeList" id="bushLog"></ul>
+</div>
+</div>
+
+<div class="card" id="out">
+  <div class="section">First hang (this season)</div>
+  <div id="lines"></div>
+  <div class="calcLabel">First hang total</div>
+  <div class="total" id="totalCalc">$0</div>
+  <div class="total" id="totalFinal" style="display:none">$0</div>
+  <button class="btn toggle tiny" type="button" id="toggleFirstOverride">Override</button>
+  <div class="overridePanel" id="firstOverridePanel">
+    <div class="override">
+      <label>Override price</label>
+      <input id="firstOverride" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Blank = calculated" />
+    </div>
+    <div class="discRow">
+      <div>
+        <label>Discount $</label>
+        <input id="firstDiscAmt" type="number" inputmode="decimal" min="0" step="0.01" value="" placeholder="0" />
+      </div>
+      <div>
+        <label>Discount %</label>
+        <input id="firstDiscPct" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="" placeholder="0" />
+      </div>
+    </div>
+    <p class="hint">$ or % (or both), after override.</p>
+    <div class="calcLabel">Final after override/discount</div>
+    <div class="total" id="totalFinalShown">$0</div>
+  </div>
+  <div class="note" id="firstNote" hidden></div>
+
+  <div class="section">Suggested rehang (next season)</div>
+  <p class="hint">Final price only — not itemized.</p>
+  <div class="calcLabel">Suggested rehang total</div>
+  <div class="total" id="rehangCalc">$0</div>
+  <div class="total" id="rehangFinal" style="display:none">$0</div>
+  <button class="btn toggle tiny" type="button" id="toggleRehangOverride">Override</button>
+  <div class="overridePanel" id="rehangOverridePanel">
+    <div class="override">
+      <label>Override price</label>
+      <input id="rehangOverride" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Blank = calculated" />
+    </div>
+    <div class="discRow">
+      <div>
+        <label>Discount $</label>
+        <input id="rehangDiscAmt" type="number" inputmode="decimal" min="0" step="0.01" value="" placeholder="0" />
+      </div>
+      <div>
+        <label>Discount %</label>
+        <input id="rehangDiscPct" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="" placeholder="0" />
+      </div>
+    </div>
+    <p class="hint">$ or % (or both), after override.</p>
+    <div class="calcLabel">Final after override/discount</div>
+    <div class="total" id="rehangFinalShown">$0</div>
+  </div>
+  <div class="note" id="rehangNote" hidden></div>
+
+  <ul class="benefits">
+    <li>Takedown included</li>
+    <li>Maintenance included</li>
+  </ul>
+  <div class="itemized" id="copyText"></div>
+  <button class="btn" type="button" id="copyBtn">Copy estimate text</button>
+</div>
+
+<script>
+const FIRST = { roof:5, ball:25, glue:6, tub:50 };
+const REHANG = { roof:2.5, ball:25, glue:3.5 };
+const $ = id => document.getElementById(id);
+const money = n => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', {minimumFractionDigits: Math.abs(n % 1) > 1e-9 ? 2 : 0, maximumFractionDigits: 2});
+const treeLog = [];
+
+function treeBallsFromInputs() {
+  const diamIn = parseFloat($('treeDiam').value);
+  let H = parseFloat($('treeHeight').value);
+  const spacingIn = parseFloat($('treeSpacing').value);
+  if (!(diamIn > 0) || !(H > 0)) return { balls: 0, ft: 0, capped: false };
+  const capped = H > 10;
+  H = Math.min(H, 10);
+  const D = diamIn / 12;
+  const P = spacingIn / 12;
+  const circ = Math.PI * D;
+  const L = H * Math.sqrt(circ * circ + P * P) / P;
+  return { balls: Math.ceil(L / 25), ft: L, capped, diamIn, H, spacingIn };
+}
+
+function updateTreePreview() {
+  const t = treeBallsFromInputs();
+  if (!t.balls) {
+    $('treePreview').textContent = '— balls for this tree';
+    return;
+  }
+  let msg = t.balls + ' balls for this tree (≈' + t.ft.toFixed(0) + ' ft)';
+  if (t.capped) msg += ' · height capped at 10 ft';
+  $('treePreview').textContent = msg;
+}
+
+const bushLog = [];
+
+function bushBallsFromInputs() {
+  const perim = parseFloat($('bushPerim').value); // length around in feet
+  const H = parseFloat($('bushHeight').value);
+  const spacingIn = parseFloat($('bushSpacing').value);
+  if (!(perim > 0) || !(H > 0)) return { balls: 0, ft: 0 };
+  const P = spacingIn / 12;
+  // Same spiral idea as trees: horizontal run = perimeter, pitch = spacing
+  const L = H * Math.sqrt(perim * perim + P * P) / P;
+  return { balls: Math.ceil(L / 25), ft: L, perim, H, spacingIn };
+}
+
+function updateBushPreview() {
+  const t = bushBallsFromInputs();
+  if (!t.balls) {
+    $('bushPreviewText').textContent = '— balls for this bush';
+    return;
+  }
+  $('bushPreviewText').textContent = t.balls + ' balls for this bush (≈' + t.ft.toFixed(0) + ' ft)';
+}
+
+function renderBushLog() {
+  const ul = $('bushLog');
+  if (!bushLog.length) { ul.innerHTML = ''; return; }
+  ul.innerHTML = bushLog.map((t, i) =>
+    `<li><span>${t.perim} ft around × ${t.H} ft @ ${t.spacingIn}" → <strong>${t.balls} balls</strong></span>` +
+    `<button type="button" data-i="${i}">Remove</button></li>`
+  ).join('');
+  ul.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.i;
+      const removed = bushLog.splice(i, 1)[0];
+      $('bushBalls').value = Math.max(0, (+$('bushBalls').value || 0) - removed.balls);
+      renderBushLog();
+      calc();
+    });
+  });
+}
+
+function renderTreeLog() {
+  const ul = $('treeLog');
+  if (!treeLog.length) { ul.innerHTML = ''; return; }
+  ul.innerHTML = treeLog.map((t, i) =>
+    `<li><span>${t.diamIn}" × ${t.H} ft @ ${t.spacingIn}" → <strong>${t.balls} balls</strong></span>` +
+    `<button type="button" data-i="${i}">Remove</button></li>`
+  ).join('');
+  ul.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = +btn.dataset.i;
+      const removed = treeLog.splice(i, 1)[0];
+      $('treeBalls').value = Math.max(0, (+$('treeBalls').value || 0) - removed.balls);
+      renderTreeLog();
+      calc();
+    });
+  });
+}
+
+function finalize(calc, overrideStr, discAmtStr, discPctStr) {
+  const hasOverride = overrideStr !== '' && !Number.isNaN(+overrideStr);
+  let base = hasOverride ? +overrideStr : calc;
+  const discAmt = discAmtStr !== '' ? Math.max(0, +discAmtStr || 0) : 0;
+  const discPct = discPctStr !== '' ? Math.max(0, Math.min(100, +discPctStr || 0)) : 0;
+  const afterPct = base * (1 - discPct / 100);
+  const final = Math.max(0, afterPct - discAmt);
+  return { calc, base, final, hasOverride, discAmt, discPct };
+}
+
+function calc(){
+  const roof = +$('roofFt').value || 0;
+  const trees = +$('treeBalls').value || 0;
+  const bushes = +$('bushBalls').value || 0;
+  const win = +$('winFt').value || 0;
+  const arch = +$('archFt').value || 0;
+  const gar = +$('garFt').value || 0;
+  const tubs = +$('tubs').value || 0;
+
+  const rehang = [];
+  if (roof > 0) rehang.push({label:`Roofline (${roof} ft × $2.50)`, amt:roof*REHANG.roof, speak:`${money(roof*REHANG.roof)} for roofline`});
+  if (trees > 0) rehang.push({label:`Trees (${trees} balls × $25)`, amt:trees*REHANG.ball, speak:`${money(trees*REHANG.ball)} for trees`});
+  if (bushes > 0) rehang.push({label:`Bushes (${bushes} balls × $25)`, amt:bushes*REHANG.ball, speak:`${money(bushes*REHANG.ball)} for bushes`});
+  if (win > 0) rehang.push({label:`Front windows (${win} ft × $3.50)`, amt:win*REHANG.glue, speak:`${money(win*REHANG.glue)} for all front windows`});
+  if (arch > 0) rehang.push({label:`Archways (${arch} ft × $3.50)`, amt:arch*REHANG.glue, speak:`${money(arch*REHANG.glue)} for archways`});
+  if (gar > 0) rehang.push({label:`Garages (${gar} ft × $3.50)`, amt:gar*REHANG.glue, speak:`${money(gar*REHANG.glue)} for all garages`});
+
+  const rehangCalc = rehang.reduce((s,p)=>s+p.amt,0);
+
+  // Per-line adjustments (promo on windows, etc.)
+  const keys = ['roof','trees','bushes','win','arch','gar','tubs'];
+  function lineFinal(key, base) {
+    const oEl = $(key+'Override');
+    const aEl = $(key+'DiscAmt');
+    const pEl = $(key+'DiscPct');
+    const o = oEl ? oEl.value.trim() : '';
+    const dA = aEl ? aEl.value.trim() : '';
+    const dP = pEl ? pEl.value.trim() : '';
+    return finalize(base, o, dA, dP);
+  }
+  // Rebuild first parts with keys
+  const firstKeyed = [];
+  if (roof > 0) firstKeyed.push({key:'roof', label:`Roofline (${roof} ft × $5)`, amt:roof*FIRST.roof, speakBase:'roofline'});
+  if (trees > 0) firstKeyed.push({key:'trees', label:`Trees (${trees} balls × $25)`, amt:trees*FIRST.ball, speakBase:'trees'});
+  if (bushes > 0) firstKeyed.push({key:'bushes', label:`Bushes (${bushes} balls × $25)`, amt:bushes*FIRST.ball, speakBase:'bushes'});
+  if (win > 0) firstKeyed.push({key:'win', label:`Front windows (${win} ft × $6)`, amt:win*FIRST.glue, speakBase:'all front windows'});
+  if (arch > 0) firstKeyed.push({key:'arch', label:`Archways (${arch} ft × $6)`, amt:arch*FIRST.glue, speakBase:'archways'});
+  if (gar > 0) firstKeyed.push({key:'gar', label:`Garages (${gar} ft × $6)`, amt:gar*FIRST.glue, speakBase:'all garages'});
+  if (tubs > 0) firstKeyed.push({key:'tubs', label:`Storage (${tubs} tubs × $50)`, amt:tubs*FIRST.tub, speakBase:'storage'});
+
+  const keySig = firstKeyed.map(i => i.key).join(',');
+  const needRebuild = $('lines').dataset.keys !== keySig;
+  if (!firstKeyed.length) {
+    $('lines').innerHTML = '<div class="muted">Enter footage / balls from the photos.</div>';
+    $('lines').dataset.keys = '';
+  } else if (needRebuild) {
+    const saved = {};
+    keys.forEach(k => {
+      const panel = document.getElementById(k+'Adj');
+      saved[k] = {
+        open: panel && panel.classList.contains('open'),
+        o: (document.getElementById(k+'Override') || {}).value || '',
+        a: (document.getElementById(k+'DiscAmt') || {}).value || '',
+        p: (document.getElementById(k+'DiscPct') || {}).value || '',
+      };
+    });
+    $('lines').innerHTML = firstKeyed.map(item => {
+      const s = saved[item.key] || {};
+      const open = s.open ? ' open' : '';
+      const btnLabel = s.open ? 'Hide' : 'Override';
+      return `<div class="lineBlock" data-key="${item.key}">
+        <div class="lineHead">
+          <div class="left"><span id="${item.key}Label">${item.label}</span><span class="lineMuted" id="${item.key}Meta"></span></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <strong class="amt" id="${item.key}Amt">${money(item.amt)}</strong>
+            <button type="button" class="btn toggle tiny lineToggle" data-key="${item.key}">${btnLabel}</button>
+          </div>
+        </div>
+        <div class="lineAdj${open}" id="${item.key}Adj">
+          <div><label>Override $</label><input id="${item.key}Override" type="number" inputmode="decimal" min="0" step="0.01" placeholder="—" value="${s.o||''}" /></div>
+          <div><label>Disc $</label><input id="${item.key}DiscAmt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" value="${s.a||''}" /></div>
+          <div><label>Disc %</label><input id="${item.key}DiscPct" type="number" inputmode="decimal" min="0" max="100" step="0.1" placeholder="0" value="${s.p||''}" /></div>
+        </div>
+      </div>`;
+    }).join('');
+    $('lines').dataset.keys = keySig;
+    document.querySelectorAll('.lineToggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const k = btn.dataset.key;
+        const panel = $(k+'Adj');
+        panel.classList.toggle('open');
+        btn.textContent = panel.classList.contains('open') ? 'Hide' : 'Override';
+      });
+    });
+    firstKeyed.forEach(item => {
+      ['Override','DiscAmt','DiscPct'].forEach(suf => {
+        const el = $(item.key+suf);
+        if (el) el.addEventListener('input', calc);
+      });
+    });
+  } else {
+    firstKeyed.forEach(item => {
+      const lab = $(item.key+'Label');
+      if (lab) lab.textContent = item.label;
+    });
+  }
+
+  // Apply line finals
+  const first = [];
+  let firstCalc = 0;
+  firstKeyed.forEach(item => {
+    const lf = lineFinal(item.key, item.amt);
+    firstCalc += lf.final;
+    const adjBits = [];
+    if (lf.hasOverride) adjBits.push('override');
+    if (lf.discPct) adjBits.push(lf.discPct+'% off');
+    if (lf.discAmt) adjBits.push(money(lf.discAmt)+' off');
+    const meta = $(item.key+'Meta');
+    if (meta) meta.textContent = adjBits.length ? adjBits.join(' · ') + (lf.final !== item.amt ? ` → was ${money(item.amt)}` : '') : '';
+    const amtEl = $(item.key+'Amt');
+    if (amtEl) amtEl.textContent = money(lf.final);
+    const speak = item.key === 'tubs'
+      ? `Storage optional: ${money(lf.final)} (${tubs} tubs)`
+      : `${money(lf.final)} for ${item.speakBase}`;
+    first.push({label:item.label, amt:lf.final, speak, base:item.amt, adj:lf});
+  });
+
+  const f = finalize(firstCalc, $('firstOverride').value.trim(), $('firstDiscAmt').value.trim(), $('firstDiscPct').value.trim());
+  const r = finalize(rehangCalc, $('rehangOverride').value.trim(), $('rehangDiscAmt').value.trim(), $('rehangDiscPct').value.trim());
+  const firstAdj = f.hasOverride || f.discPct || f.discAmt;
+  const rehangAdj = r.hasOverride || r.discPct || r.discAmt;
+  $('totalCalc').textContent = money(firstAdj ? f.final : firstCalc);
+  $('totalFinal').textContent = money(f.final);
+  if ($('totalFinalShown')) $('totalFinalShown').textContent = money(f.final);
+  $('rehangCalc').textContent = money(rehangAdj ? r.final : rehangCalc);
+  $('rehangFinal').textContent = money(r.final);
+  if ($('rehangFinalShown')) $('rehangFinalShown').textContent = money(r.final);
+
+  const fNote = [];
+  if (f.hasOverride) fNote.push('Override used');
+  if (f.discPct) fNote.push(f.discPct + '% off');
+  if (f.discAmt) fNote.push(money(f.discAmt) + ' off');
+  $('firstNote').hidden = !fNote.length;
+  $('firstNote').textContent = fNote.length ? fNote.join(' · ') : '';
+
+  const rNote = [];
+  if (r.hasOverride) rNote.push('Override used');
+  if (r.discPct) rNote.push(r.discPct + '% off');
+  if (r.discAmt) rNote.push(money(r.discAmt) + ' off');
+  $('rehangNote').hidden = !rNote.length;
+  $('rehangNote').textContent = rNote.length ? rNote.join(' · ') : '';
+
+  const firstName = $('firstName').value.trim();
+  const lastName = $('lastName').value.trim();
+  const street = $('street').value.trim();
+  const city = $('city').value.trim();
+  const state = ($('state').value.trim() || 'TX').toUpperCase();
+  const zip = $('zip').value.trim();
+  const notes = $('notes').value.trim();
+  const name = [firstName, lastName].filter(Boolean).join(' ');
+  const addr = [street, [city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(' ');
+
+  let text = '';
+  if (name) text += name + '\n';
+  if (addr) text += addr + '\n';
+  if (first.length) {
+    text += 'First hang: ' + first.map(p=>{
+      let s = p.speak;
+      if (p.adj && (p.adj.hasOverride || p.adj.discPct || p.adj.discAmt)) s += ' (adj)';
+      return s;
+    }).join(', ') + '.\n';
+    text += 'First hang calculated: ' + money(firstCalc) + '\n';
+    if (f.hasOverride) text += 'First hang override: ' + money(f.base) + '\n';
+    if (f.discPct || f.discAmt) {
+      const bits = [];
+      if (f.discPct) bits.push(f.discPct + '%');
+      if (f.discAmt) bits.push(money(f.discAmt));
+      text += 'First hang discount: ' + bits.join(' + ') + '\n';
+    }
+    text += 'First hang total: ' + money(f.final) + '\n';
+  }
+  if (rehang.length || rehangCalc > 0 || r.final > 0) {
+    if (r.hasOverride || r.discPct || r.discAmt) {
+      text += 'Suggested rehang calculated: ' + money(rehangCalc) + '\n';
+      if (r.hasOverride) text += 'Suggested rehang override: ' + money(r.base) + '\n';
+      if (r.discPct || r.discAmt) {
+        const bits = [];
+        if (r.discPct) bits.push(r.discPct + '%');
+        if (r.discAmt) bits.push(money(r.discAmt));
+        text += 'Suggested rehang discount: ' + bits.join(' + ') + '\n';
+      }
+    }
+    text += 'Suggested rehang total: ' + money(r.final) + '\n';
+  }
+  text += 'Takedown included.\n';
+  text += 'Maintenance included.';
+  if (notes) text += '\nNotes: ' + notes;
+  if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (addr ? addr+'\n' : '') + 'No line items yet.';
+  $('copyText').textContent = text;
+}
+
+['firstName','lastName','street','city','state','zip','notes','roofFt','treeBalls','bushBalls','winFt','archFt','garFt','tubs',
+ 'firstOverride','firstDiscAmt','firstDiscPct','rehangOverride','rehangDiscAmt','rehangDiscPct'].forEach(id=>{
+  $(id).addEventListener('input', calc);
+});
+['treeDiam','treeHeight','treeSpacing'].forEach(id => {
+  $(id).addEventListener('input', updateTreePreview);
+  $(id).addEventListener('change', updateTreePreview);
+});
+['bushPerim','bushHeight','bushSpacing'].forEach(id => {
+  $(id).addEventListener('input', updateBushPreview);
+  $(id).addEventListener('change', updateBushPreview);
+});
+
+$('addTree').addEventListener('click', () => {
+  const t = treeBallsFromInputs();
+  if (!t.balls) return;
+  treeLog.push(t);
+  $('treeBalls').value = (+$('treeBalls').value || 0) + t.balls;
+  renderTreeLog();
+  calc();
+});
+$('setTree').addEventListener('click', () => {
+  const t = treeBallsFromInputs();
+  if (!t.balls) return;
+  treeLog.length = 0;
+  treeLog.push(t);
+  $('treeBalls').value = t.balls;
+  renderTreeLog();
+  calc();
+});
+$('addBush').addEventListener('click', () => {
+  const t = bushBallsFromInputs();
+  if (!t.balls) return;
+  bushLog.push(t);
+  $('bushBalls').value = (+$('bushBalls').value || 0) + t.balls;
+  renderBushLog();
+  calc();
+});
+$('setBush').addEventListener('click', () => {
+  const t = bushBallsFromInputs();
+  if (!t.balls) return;
+  bushLog.length = 0;
+  bushLog.push(t);
+  $('bushBalls').value = t.balls;
+  renderBushLog();
+  calc();
+});
+
+function wireToggle(btnId, panelId) {
+  const btn = $(btnId), panel = $(panelId);
+  if (!btn || !panel) return;
+  btn.addEventListener('click', () => {
+    panel.classList.toggle('open');
+    btn.textContent = panel.classList.contains('open') ? 'Hide override / discount' : 'Override / discount';
+  });
+}
+wireToggle('toggleFirstOverride', 'firstOverridePanel');
+wireToggle('toggleRehangOverride', 'rehangOverridePanel');
+
+$('photos').addEventListener('change', e=>{
+  const box = $('preview');
+  box.innerHTML = '';
+  [...e.target.files].forEach(file=>{
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(file);
+    img.alt = file.name;
+    box.appendChild(img);
+  });
+});
+
+$('copyBtn').addEventListener('click', async ()=>{
+  const t = $('copyText').textContent;
+  try {
+    await navigator.clipboard.writeText(t);
+    $('copyBtn').textContent = 'Copied';
+    setTimeout(()=>$('copyBtn').textContent='Copy estimate text',1200);
+  } catch { prompt('Copy this estimate:', t); }
+});
+
+updateTreePreview();
+updateBushPreview();
+calc();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
