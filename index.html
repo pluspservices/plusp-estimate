@@ -344,7 +344,7 @@ textarea{min-height:64px;resize:vertical}
     <button class="btn secondary small" type="button" id="clearFormBtn">Clear form</button>
   </div>
   <div class="section">Saved quotes</div>
-  <p class="hint" style="margin-top:0" id="savedHint">Saved to +P Prospects (Drive) and on this phone. Open one to keep editing.</p>
+  <p class="hint" style="margin-top:0" id="savedHint">Saved to +P Prospects (Drive) and on this phone. Open to edit, or Delete to remove Prospects + Drive folder + phone copy.</p>
   <ul class="savedList" id="savedList"></ul>
 </div>
 
@@ -1389,20 +1389,46 @@ function renderSavedList(){
     openBtn.textContent = 'Open';
     openBtn.addEventListener('click', () => openSavedItem(item, openBtn));
     btns.appendChild(openBtn);
-    if (item.kind === 'local') {
-      const delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'btn secondary small';
-      delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', () => {
-        if (!confirm('Delete phone copy for ' + (item.title || 'this customer') + '?')) return;
-        persistQuotes(loadQuotes().filter(x => x.id !== item.id));
-        renderSavedList();
-      });
-      btns.appendChild(delBtn);
-    }
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn secondary small';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => deleteSavedItem(item, delBtn));
+    btns.appendChild(delBtn);
     box.appendChild(li);
   });
+}
+
+async function deleteSavedItem(item, btn){
+  const title = item.title || 'this customer';
+  const hasCloud = !!(item.prospectId && (item.kind === 'cloud' || item.prospectId));
+  const msg = hasCloud
+    ? ('Delete ' + title + ' from +P Prospects, the Drive estimate folder (and lead photos if any), and this phone?\n\nThis cannot be undone.')
+    : ('Delete phone copy for ' + title + '?');
+  if (!confirm(msg)) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  try {
+    if (hasCloud) {
+      await apiPost({ action: 'deleteQuote', prospectId: item.prospectId });
+    }
+    const pid = String(item.prospectId || '');
+    const lid = String(item.id || '');
+    persistQuotes(loadQuotes().filter(x => {
+      if (pid && (String(x.prospectId || '') === pid || String(x.id || '') === pid)) return false;
+      if (lid && String(x.id || '') === lid) return false;
+      return true;
+    }));
+    if (pid && currentProspectId === pid) currentProspectId = '';
+    cloudProspects = cloudProspects.filter(p => String(p.prospectId || '') !== pid);
+    renderSavedList();
+    if (hasCloud) await refreshCloudList();
+  } catch (err) {
+    alert('Could not delete: ' + (err && err.message ? err.message : err));
+    btn.textContent = label;
+    btn.disabled = false;
+  }
 }
 async function openSavedItem(item, btn){
   const label = btn.textContent;
@@ -1527,7 +1553,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=31').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=32').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });

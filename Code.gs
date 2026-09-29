@@ -17,6 +17,7 @@ function doPost(e) {
     else if (action === 'saveQuote') out = handleSaveQuote(data);
     else if (action === 'listQuotes') out = handleListQuotes();
     else if (action === 'getQuote') out = handleGetQuote(data);
+    else if (action === 'deleteQuote') out = handleDeleteQuote(data);
     else throw new Error('Unknown action: ' + action);
     return json_(out);
   } catch (err) {
@@ -230,6 +231,38 @@ function handleGetQuote(data) {
   throw new Error('Prospect not found');
 }
 
+
+
+function trashFolderFromUrl_(url) {
+  if (!url) return false;
+  try {
+    var folder = folderFromUrl_(url);
+    if (!folder) return false;
+    folder.setTrashed(true);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function handleDeleteQuote(data) {
+  var id = clean_(data.prospectId);
+  if (!id) throw new Error('Missing prospectId');
+  var sheet = sheet_();
+  var rows = sheet.getDataRange().getValues();
+  var found = findRowById_(rows, id);
+  if (found < 0) throw new Error('Prospect not found');
+  var row = rows[found - 1];
+  var trashedEstimate = trashFolderFromUrl_(row[17]);
+  var trashedPhotos = trashFolderFromUrl_(row[14]);
+  sheet.deleteRow(found);
+  return {
+    ok: true,
+    prospectId: id,
+    trashedEstimateFolder: trashedEstimate,
+    trashedPhotoFolder: trashedPhotos
+  };
+}
 
 function folderFromUrl_(url) {
   if (!url) return null;
