@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <title>+P Photo Estimate</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+<script src="jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#0f1419;--card:#1a2332;--text:#f2f5f8;--muted:#9aa8b8;--accent:#e8b84a;--ok:#3dd68c;--line:#2a3a4f;--warn:#ff8f6b}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1098,12 +1098,30 @@ function buildPdfEstimate(){
   doc.save('+P-Estimate-' + safeName + '.pdf');
 }
 
-$('pdfBtn').addEventListener('click', () => {
+function waitForJsPdf(ms){
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    (function tick(){
+      if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
+      if (Date.now() - start > ms) return reject(new Error('PDF library failed to load'));
+      setTimeout(tick, 50);
+    })();
+  });
+}
+$('pdfBtn').addEventListener('click', async () => {
+  const btn = $('pdfBtn');
+  const prev = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Building PDF…';
   try {
     calc();
+    await waitForJsPdf(8000);
     buildPdfEstimate();
   } catch (err) {
     alert('Could not build PDF: ' + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
   }
 });
 
@@ -1306,7 +1324,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=17').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=18').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
