@@ -321,9 +321,8 @@ textarea{min-height:64px;resize:vertical}
     <li>Takedown included</li>
     <li>Maintenance included</li>
   </ul>
-  <div class="itemized" id="copyText"></div>
-  <button class="btn" type="button" id="copyBtn">Copy estimate text</button>
-  <button class="btn secondary" type="button" id="pdfBtn">Download PDF estimate</button>
+  <div class="itemized" id="copyText" hidden></div>
+  <button class="btn" type="button" id="pdfBtn">Download PDF estimate</button>
 
   <div class="section">Materials for this job</div>
   <p class="hint" style="margin-top:0">1 C9 bulb + 1 clip per C9 ft · balled minis by the ball · packs round up</p>
@@ -877,15 +876,6 @@ $('estimatePhotos').addEventListener('click', async ()=>{
   } finally {
     btn.disabled = false;
   }
-});
-
-$('copyBtn').addEventListener('click', async ()=>{
-  const t = $('copyText').textContent;
-  try {
-    await navigator.clipboard.writeText(t);
-    $('copyBtn').textContent = 'Copied';
-    setTimeout(()=>$('copyBtn').textContent='Copy estimate text',1200);
-  } catch { prompt('Copy this estimate:', t); }
 });
 
 function pdfMoney(n){
