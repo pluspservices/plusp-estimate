@@ -93,11 +93,22 @@ textarea{min-height:64px;resize:vertical}
 .split .row3 input,.split .row3 select{font-size:.9rem;padding:8px 6px;margin-bottom:8px}
 .split .row3 label{font-size:.68rem;margin-bottom:4px}
 
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.brand .titles{min-width:0}
+.logo{width:72px;height:72px;border-radius:14px;background:#fff;padding:5px;object-fit:contain;flex-shrink:0;border:1px solid var(--line)}
+.brand h1{margin:0 0 2px}
+.brand .sub{margin:0}
+
 </style>
 </head>
 <body>
-<h1>+P Photo Estimate</h1>
-<p class="sub">Your rates · itemized · first hang + rehang</p>
+<div class="brand">
+  <img class="logo" src="logo.png" width="72" height="72" alt="+P Holiday Lighting"/>
+  <div class="titles">
+    <h1>+P Photo Estimate</h1>
+    <p class="sub">Your rates · itemized · first hang + rehang</p>
+  </div>
+</div>
 
 <div class="card">
   <div class="row">
@@ -884,22 +895,61 @@ function pdfMoney(n){
 function pdfEscape(s){
   return String(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
 }
-/** Minimal text-only PDF (no external library). */
-function makeSimplePdf(lines){
-  const pageW = 612, pageH = 792; // letter
+function pdfStr(s){
+  return new TextEncoder().encode(s);
+}
+function pdfConcat(parts){
+  let len = 0;
+  for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+function loadLogoJpeg(size){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(img, 0, 0, size, size);
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error('logo encode failed')); return; }
+        blob.arrayBuffer().then((buf) => resolve({ data: new Uint8Array(buf), w: size, h: size }));
+      }, 'image/jpeg', 0.92);
+    };
+    img.onerror = () => reject(new Error('Could not load logo.png'));
+    img.src = './logo.png';
+  });
+}
+/** Minimal PDF with optional JPEG logo (no external library). */
+function makeSimplePdf(lines, logo){
+  const pageW = 612, pageH = 792;
   const margin = 48;
   const fontSize = 11;
   const leading = 15;
-  const maxY = pageH - margin;
+  const logoPt = logo ? 78 : 0;
   let y = pageH - margin;
   const content = [];
+  if (logo) {
+    const x = margin;
+    const yImg = pageH - margin - logoPt;
+    content.push('q');
+    content.push(logoPt + ' 0 0 ' + logoPt + ' ' + x + ' ' + yImg + ' cm');
+    content.push('/Im1 Do');
+    content.push('Q');
+    y = yImg - 18;
+  }
   content.push('BT');
   content.push('/F1 ' + fontSize + ' Tf');
   content.push(margin + ' ' + y + ' Td');
   let first = true;
   for (const raw of lines) {
     const line = String(raw == null ? '' : raw);
-    // wrap long lines roughly
     const maxChars = 90;
     const chunks = [];
     if (!line.length) chunks.push('');
@@ -914,11 +964,6 @@ function makeSimplePdf(lines){
       chunks.push(rest);
     }
     for (const chunk of chunks) {
-      if (y < margin + leading) {
-        // new page
-        content.push('ET');
-        // We'll only support one page stream rebuild — flush multi-page properly below
-      }
       if (!first) content.push('0 -' + leading + ' Td');
       content.push('(' + pdfEscape(chunk) + ') Tj');
       first = false;
@@ -927,30 +972,49 @@ function makeSimplePdf(lines){
   }
   content.push('ET');
   const stream = content.join('\n');
+
   const objs = [];
-  objs.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
-  objs.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
-  objs.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n');
-  objs.push('4 0 obj\n<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream\nendobj\n');
-  objs.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n');
-  let pdf = '%PDF-1.4\n';
+  objs.push(pdfStr('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'));
+  objs.push(pdfStr('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'));
+  if (logo) {
+    objs.push(pdfStr('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >> >>\nendobj\n'));
+  } else {
+    objs.push(pdfStr('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n'));
+  }
+  objs.push(pdfConcat([
+    pdfStr('4 0 obj\n<< /Length ' + stream.length + ' >>\nstream\n'),
+    pdfStr(stream),
+    pdfStr('\nendstream\nendobj\n')
+  ]));
+  objs.push(pdfStr('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'));
+  if (logo) {
+    objs.push(pdfConcat([
+      pdfStr('6 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + logo.w + ' /Height ' + logo.h + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + logo.data.length + ' >>\nstream\n'),
+      logo.data,
+      pdfStr('\nendstream\nendobj\n')
+    ]));
+  }
+
+  const parts = [pdfStr('%PDF-1.4\n')];
   const offsets = [0];
+  let pos = parts[0].length;
   for (const o of objs) {
-    offsets.push(pdf.length);
-    pdf += o;
+    offsets.push(pos);
+    parts.push(o);
+    pos += o.length;
   }
-  const xref = pdf.length;
-  pdf += 'xref\n0 ' + (objs.length + 1) + '\n';
-  pdf += '0000000000 65535 f \n';
+  const xref = pos;
+  let xrefStr = 'xref\n0 ' + (objs.length + 1) + '\n';
+  xrefStr += '0000000000 65535 f \n';
   for (let i = 1; i < offsets.length; i++) {
-    pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+    xrefStr += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
   }
-  pdf += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
-  return pdf;
+  xrefStr += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  parts.push(pdfStr(xrefStr));
+  return pdfConcat(parts);
 }
-function downloadTextPdf(filename, lines){
-  const pdf = makeSimplePdf(lines);
-  const blob = new Blob([pdf], { type: 'application/pdf' });
+function downloadPdfBytes(filename, bytes){
+  const blob = new Blob([bytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -959,7 +1023,7 @@ function downloadTextPdf(filename, lines){
   a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
 }
-function buildPdfEstimate(){
+async function buildPdfEstimate(){
   const firstName = $('firstName').value.trim();
   const lastName = $('lastName').value.trim();
   const phone = $('phone').value.trim();
@@ -1061,13 +1125,15 @@ function buildPdfEstimate(){
   lines.push('Estimate may be adjusted after on-site review.');
   lines.push('Questions: pluspservices@gmail.com');
 
+  let logo = null;
+  try { logo = await loadLogoJpeg(220); } catch (e) { console.warn(e); }
   const safeName = name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'estimate';
-  downloadTextPdf('+P-Estimate-' + safeName + '.pdf', lines);
+  downloadPdfBytes('+P-Estimate-' + safeName + '.pdf', makeSimplePdf(lines, logo));
 }
-$('pdfBtn').addEventListener('click', () => {
+$('pdfBtn').addEventListener('click', async () => {
   try {
     calc();
-    buildPdfEstimate();
+    await buildPdfEstimate();
   } catch (err) {
     alert('Could not build PDF: ' + (err && err.message ? err.message : err));
   }
@@ -1272,7 +1338,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=19').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=20').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });

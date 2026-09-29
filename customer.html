@@ -32,11 +32,22 @@ textarea{min-height:72px;resize:vertical}
 .file{position:relative;overflow:hidden;display:block;text-align:center}
 .file input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .hp{position:absolute;left:-9999px;opacity:0;height:0;width:0;overflow:hidden}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.brand .titles{min-width:0}
+.logo{width:64px;height:64px;border-radius:14px;background:#fff;padding:5px;object-fit:contain;flex-shrink:0;border:1px solid var(--line)}
+.brand h1{margin:0 0 2px}
+.brand .sub{margin:0}
+
 </style>
 </head>
 <body>
-<h1>+P Holiday Lighting</h1>
-<p class="sub">Request a Christmas light quote — fill this out and tap Submit. We’ll get it by email.</p>
+<div class="brand">
+  <img class="logo" src="logo.png" width="64" height="64" alt="+P Holiday Lighting"/>
+  <div class="titles">
+    <h1>+P Holiday Lighting</h1>
+    <p class="sub">Request a Christmas light quote — fill this out and tap Submit. We’ll get it by email.</p>
+  </div>
+</div>
 
 <div class="card" id="formCard">
   <form id="quoteForm" novalidate>
