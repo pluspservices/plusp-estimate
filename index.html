@@ -344,7 +344,7 @@ textarea{min-height:64px;resize:vertical}
     <button class="btn secondary small" type="button" id="clearFormBtn">Clear form</button>
   </div>
   <div class="section">Saved quotes</div>
-  <p class="hint" style="margin-top:0" id="savedHint">Saved to +P Prospects (Drive) and on this phone. Open to edit, or Delete to remove Prospects + Drive folder + phone copy.</p>
+  <p class="hint" style="margin-top:0" id="savedHint">Saved to +P Prospects (Drive) and on this phone. Phone only = this device; Delete all = Prospects + Drive + phone.</p>
   <ul class="savedList" id="savedList"></ul>
 </div>
 
@@ -1389,21 +1389,54 @@ function renderSavedList(){
     openBtn.textContent = 'Open';
     openBtn.addEventListener('click', () => openSavedItem(item, openBtn));
     btns.appendChild(openBtn);
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'btn secondary small';
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => deleteSavedItem(item, delBtn));
-    btns.appendChild(delBtn);
+    const phoneDelBtn = document.createElement('button');
+    phoneDelBtn.type = 'button';
+    phoneDelBtn.className = 'btn secondary small';
+    phoneDelBtn.textContent = 'Phone only';
+    phoneDelBtn.title = 'Remove from this phone only — keeps Prospects and Drive';
+    phoneDelBtn.addEventListener('click', () => removePhoneCopy(item));
+    btns.appendChild(phoneDelBtn);
+    if (item.prospectId || item.kind === 'cloud') {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn secondary small';
+      delBtn.textContent = 'Delete all';
+      delBtn.title = 'Remove Prospects row, Drive folders, and phone copy';
+      delBtn.addEventListener('click', () => deleteSavedItem(item, delBtn));
+      btns.appendChild(delBtn);
+    } else {
+      // phone-only save with no cloud id — Phone only is the full delete
+      phoneDelBtn.textContent = 'Delete';
+      phoneDelBtn.title = 'Remove phone copy';
+    }
     box.appendChild(li);
   });
+}
+
+
+function removePhoneCopy(item){
+  const title = item.title || 'this customer';
+  if (!confirm('Remove ' + title + ' from this phone only?\n\nProspects and Drive stay unchanged.')) return;
+  const pid = String(item.prospectId || '');
+  const lid = String(item.id || '');
+  persistQuotes(loadQuotes().filter(x => {
+    if (pid && (String(x.prospectId || '') === pid || String(x.id || '') === pid)) return false;
+    if (lid && String(x.id || '') === lid) return false;
+    return true;
+  }));
+  // Keep showing cloud row if it still exists in Prospects
+  if (item.kind === 'local') renderSavedList();
+  else {
+    // cloud item: only strip local cache; list still shows Drive row
+    renderSavedList();
+  }
 }
 
 async function deleteSavedItem(item, btn){
   const title = item.title || 'this customer';
   const hasCloud = !!(item.prospectId && (item.kind === 'cloud' || item.prospectId));
   const msg = hasCloud
-    ? ('Delete ' + title + ' from +P Prospects, the Drive estimate folder (and lead photos if any), and this phone?\n\nThis cannot be undone.')
+    ? ('DELETE ALL for ' + title + '?\n\nRemoves +P Prospects row, Drive estimate folder (and lead photos if any), and this phone copy.\n\nThis cannot be undone.')
     : ('Delete phone copy for ' + title + '?');
   if (!confirm(msg)) return;
   const label = btn.textContent;
@@ -1553,7 +1586,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=32').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=33').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
