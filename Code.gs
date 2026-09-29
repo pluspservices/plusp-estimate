@@ -303,28 +303,75 @@ function writeEstimateDoc_(folder, data, snap, stamp, existingDocUrl) {
   var first = clean_(data.first_name);
   var last = clean_(data.last_name);
   var title = 'Estimate — ' + last + ', ' + first;
-  var doc = null;
-  var existingId = docIdFromUrl_(existingDocUrl);
-  if (existingId) {
-    try { doc = DocumentApp.openById(existingId); } catch (e) { doc = null; }
-  }
-  if (!doc) {
-    // Prefer an existing Doc already in the folder
-    var it = folder.getFilesByType(MimeType.GOOGLE_DOCS);
-    if (it.hasNext()) {
-      try { doc = DocumentApp.openById(it.next().getId()); } catch (e) { doc = null; }
+  try {
+    var doc = null;
+    var existingId = docIdFromUrl_(existingDocUrl);
+    if (existingId) {
+      try { doc = DocumentApp.openById(existingId); } catch (e) { doc = null; }
     }
+    if (!doc) {
+      var it = folder.getFilesByType(MimeType.GOOGLE_DOCS);
+      if (it.hasNext()) {
+        try { doc = DocumentApp.openById(it.next().getId()); } catch (e) { doc = null; }
+      }
+    }
+    if (!doc) {
+      doc = DocumentApp.create(title);
+      var file = DriveApp.getFileById(doc.getId());
+      folder.addFile(file);
+      try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+    } else {
+      try { doc.setName(title); } catch (e) {}
+    }
+    fillEstimateDocBody_(doc, data, snap, stamp);
+    return doc.getUrl();
+  } catch (err) {
+    // Docs scope not authorized yet — still leave a readable text file via DriveApp
+    return writeEstimateTextFallback_(folder, data, snap, stamp, title);
   }
-  if (!doc) {
-    doc = DocumentApp.create(title);
-    var file = DriveApp.getFileById(doc.getId());
-    folder.addFile(file);
-    try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+}
+
+function writeEstimateTextFallback_(folder, data, snap, stamp, title) {
+  var lines = [];
+  lines.push('+P Holiday Lighting');
+  lines.push('Christmas Light Installation Estimate');
+  lines.push(stamp || '');
+  lines.push('');
+  lines.push('Prepared for');
+  lines.push([clean_(data.first_name), clean_(data.last_name)].filter(String).join(' '));
+  if (clean_(data.phone)) lines.push(clean_(data.phone));
+  if (clean_(data.email)) lines.push(clean_(data.email));
+  var addr = [clean_(data.street), [clean_(data.city), clean_(data.state) || 'TX'].filter(String).join(', '), clean_(data.zip)].filter(String).join(' ');
+  if (addr) lines.push(addr);
+  if (clean_(data.subdivision)) lines.push('Subdivision: ' + clean_(data.subdivision));
+  lines.push('');
+  var copy = (snap && snap.copyText) ? String(snap.copyText) : '';
+  if (copy) {
+    lines.push('Estimate details');
+    lines.push(copy);
   } else {
-    try { doc.setName(title); } catch (e) {}
+    lines.push('First hang total: ' + (data.first_hang_total || ''));
+    lines.push('Suggested rehang total: ' + (data.rehang_total || ''));
   }
-  fillEstimateDocBody_(doc, data, snap, stamp);
-  return doc.getUrl();
+  if (clean_(data.notes)) {
+    lines.push('');
+    lines.push('Notes');
+    lines.push(clean_(data.notes));
+  }
+  lines.push('');
+  lines.push('Text or call: (214) 995-3002');
+  lines.push('Email (secondary): pluspservices@gmail.com');
+  var name = 'Estimate.txt';
+  replaceNamedFile_(folder, name, Utilities.newBlob(lines.join('\n'), 'text/plain', name));
+  var files = folder.getFilesByName(name);
+  if (files.hasNext()) return files.next().getUrl();
+  return folder.getUrl();
+}
+
+/** Run once from the editor (Run ▶) to grant Google Docs permission, then Redeploy. */
+function authorizeDocsPermission() {
+  var doc = DocumentApp.create('+P Docs permission check');
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
 }
 
 function clean_(v) { return String(v == null ? '' : v).trim(); }
