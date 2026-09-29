@@ -114,20 +114,30 @@ function handleSaveQuote(data) {
   if (found > 0 && !id) id = String(rows[found - 1][0] || '');
   if (!id) id = Utilities.getUuid().slice(0, 8);
 
-  var folderName = 'Estimate ' + stamp + ' ' + last + ', ' + first + ' — ' + street;
-  folderName = folderName.substring(0, 120);
   var parent = DriveApp.getFolderById(QUOTES_FOLDER_ID);
-  var folder = parent.createFolder(folderName);
+  var folder = null;
+  var prevDocUrl = '';
+  if (found > 0) {
+    prevDocUrl = clean_(rows[found - 1][20]);
+    folder = folderFromUrl_(rows[found - 1][17]);
+  }
+  if (!folder) {
+    var folderName = 'Estimate ' + last + ', ' + first + ' — ' + street;
+    folderName = folderName.substring(0, 120);
+    folder = parent.createFolder(folderName);
+  }
 
   var snap = data.quote_json || null;
   if (snap) {
-    folder.createFile(Utilities.newBlob(JSON.stringify(snap, null, 2), 'application/json', '_reload-data.json'));
+    replaceNamedFile_(folder, '_reload-data.json', Utilities.newBlob(JSON.stringify(snap, null, 2), 'application/json', '_reload-data.json'));
+    // remove legacy filename if present
+    trashNamedFiles_(folder, 'quote.json');
   }
   if (data.pdf_base64) {
     var pdfBytes = Utilities.base64Decode(String(data.pdf_base64).replace(/^data:application\/pdf;base64,/, ''));
-    folder.createFile(Utilities.newBlob(pdfBytes, 'application/pdf', 'Estimate.pdf'));
+    replaceNamedFile_(folder, 'Estimate.pdf', Utilities.newBlob(pdfBytes, 'application/pdf', 'Estimate.pdf'));
   }
-  var docUrl = writeEstimateDoc_(folder, data, snap, stamp);
+  var docUrl = writeEstimateDoc_(folder, data, snap, stamp, prevDocUrl);
 
   var status = clean_(data.status) || 'Estimate saved';
   var row = [
@@ -220,11 +230,38 @@ function handleGetQuote(data) {
 }
 
 
-function writeEstimateDoc_(folder, data, snap, stamp) {
+function folderFromUrl_(url) {
+  if (!url) return null;
+  try {
+    var idMatch = String(url).match(/[-\w]{25,}/);
+    if (!idMatch) return null;
+    return DriveApp.getFolderById(idMatch[0]);
+  } catch (e) {
+    return null;
+  }
+}
+
+function trashNamedFiles_(folder, name) {
+  var files = folder.getFilesByName(name);
+  while (files.hasNext()) {
+    try { files.next().setTrashed(true); } catch (e) {}
+  }
+}
+
+function replaceNamedFile_(folder, name, blob) {
+  trashNamedFiles_(folder, name);
+  folder.createFile(blob);
+}
+
+function docIdFromUrl_(url) {
+  if (!url) return '';
+  var m = String(url).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : '';
+}
+
+function fillEstimateDocBody_(doc, data, snap, stamp) {
   var first = clean_(data.first_name);
   var last = clean_(data.last_name);
-  var title = 'Estimate — ' + last + ', ' + first;
-  var doc = DocumentApp.create(title);
   var body = doc.getBody();
   body.clear();
   body.appendParagraph('+P Holiday Lighting').setHeading(DocumentApp.ParagraphHeading.HEADING1);
@@ -260,10 +297,33 @@ function writeEstimateDoc_(folder, data, snap, stamp) {
   body.appendParagraph('Text or call: (214) 995-3002');
   body.appendParagraph('Email (secondary): pluspservices@gmail.com');
   doc.saveAndClose();
+}
 
-  var file = DriveApp.getFileById(doc.getId());
-  folder.addFile(file);
-  try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+function writeEstimateDoc_(folder, data, snap, stamp, existingDocUrl) {
+  var first = clean_(data.first_name);
+  var last = clean_(data.last_name);
+  var title = 'Estimate — ' + last + ', ' + first;
+  var doc = null;
+  var existingId = docIdFromUrl_(existingDocUrl);
+  if (existingId) {
+    try { doc = DocumentApp.openById(existingId); } catch (e) { doc = null; }
+  }
+  if (!doc) {
+    // Prefer an existing Doc already in the folder
+    var it = folder.getFilesByType(MimeType.GOOGLE_DOCS);
+    if (it.hasNext()) {
+      try { doc = DocumentApp.openById(it.next().getId()); } catch (e) { doc = null; }
+    }
+  }
+  if (!doc) {
+    doc = DocumentApp.create(title);
+    var file = DriveApp.getFileById(doc.getId());
+    folder.addFile(file);
+    try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+  } else {
+    try { doc.setName(title); } catch (e) {}
+  }
+  fillEstimateDocBody_(doc, data, snap, stamp);
   return doc.getUrl();
 }
 
