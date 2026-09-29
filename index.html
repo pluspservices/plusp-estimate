@@ -11,6 +11,7 @@
 <link rel="apple-touch-icon" href="icon-180.png"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <title>+P Photo Estimate</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#0f1419;--card:#1a2332;--text:#f2f5f8;--muted:#9aa8b8;--accent:#e8b84a;--ok:#3dd68c;--line:#2a3a4f;--warn:#ff8f6b}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -322,6 +323,7 @@ textarea{min-height:64px;resize:vertical}
   </ul>
   <div class="itemized" id="copyText"></div>
   <button class="btn" type="button" id="copyBtn">Copy estimate text</button>
+  <button class="btn secondary" type="button" id="pdfBtn">Download PDF estimate</button>
 
   <div class="section">Materials for this job</div>
   <p class="hint" style="margin-top:0">1 C9 bulb + 1 clip per C9 ft · balled minis by the ball · packs round up</p>
@@ -885,6 +887,236 @@ $('copyBtn').addEventListener('click', async ()=>{
     setTimeout(()=>$('copyBtn').textContent='Copy estimate text',1200);
   } catch { prompt('Copy this estimate:', t); }
 });
+
+function pdfMoney(n){
+  return '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function buildPdfEstimate(){
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('PDF library still loading — try again in a second.');
+    return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth();
+  const margin = 48;
+  let y = 48;
+
+  const firstName = $('firstName').value.trim();
+  const lastName = $('lastName').value.trim();
+  const phone = $('phone').value.trim();
+  const street = $('street').value.trim();
+  const subdivision = $('subdivision').value.trim();
+  const city = $('city').value.trim();
+  const state = ($('state').value.trim() || 'TX').toUpperCase();
+  const zip = $('zip').value.trim();
+  const notes = $('notes').value.trim();
+  const name = [firstName, lastName].filter(Boolean).join(' ') || 'Customer';
+  const addr1 = street || '';
+  const addr2 = [[city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(' ');
+
+  // Header bar
+  doc.setFillColor(15, 20, 25);
+  doc.rect(0, 0, W, 72, 'F');
+  doc.setTextColor(232, 184, 74);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('+P Holiday Lighting', margin, 34);
+  doc.setTextColor(242, 245, 248);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.text('Christmas Light Installation Estimate', margin, 54);
+  doc.setFontSize(9);
+  doc.setTextColor(154, 168, 184);
+  const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  doc.text(today, W - margin, 54, { align: 'right' });
+
+  y = 100;
+  doc.setTextColor(15, 20, 25);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Prepared for', margin, y);
+  y += 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.text(name, margin, y); y += 15;
+  if (phone) { doc.text(phone, margin, y); y += 15; }
+  if (addr1) { doc.text(addr1, margin, y); y += 15; }
+  if (addr2) { doc.text(addr2, margin, y); y += 15; }
+  if (subdivision) { doc.text('Subdivision: ' + subdivision, margin, y); y += 15; }
+
+  y += 10;
+  doc.setDrawColor(232, 184, 74);
+  doc.setLineWidth(1.5);
+  doc.line(margin, y, W - margin, y);
+  y += 24;
+
+  // Pull live numbers same as calc
+  const roof = +$('roofFt').value || 0;
+  const trees = +$('treeBalls').value || 0;
+  const bushes = +$('bushBalls').value || 0;
+  const win = +$('winFt').value || 0;
+  const arch = +$('archFt').value || 0;
+  const gar = +$('garFt').value || 0;
+  const tubs = +$('tubs').value || 0;
+  const FIRST = { roof:5, ball:25, glue:6, tub:50 };
+  const REHANG = { roof:2.5, ball:25, glue:3.5 };
+
+  function lineFinal(key, base) {
+    const oEl = $(key+'Override');
+    const aEl = $(key+'DiscAmt');
+    const pEl = $(key+'DiscPct');
+    const o = oEl ? oEl.value.trim() : '';
+    const dA = aEl ? aEl.value.trim() : '';
+    const dP = pEl ? pEl.value.trim() : '';
+    return finalize(base, o, dA, dP);
+  }
+
+  const items = [];
+  if (roof > 0) items.push({key:'roof', label:'Roofline', detail: roof + ' ft × $5', amt: roof*FIRST.roof});
+  if (trees > 0) items.push({key:'trees', label:'Trees', detail: trees + ' balls × $25', amt: trees*FIRST.ball});
+  if (bushes > 0) items.push({key:'bushes', label:'Bushes', detail: bushes + ' balls × $25', amt: bushes*FIRST.ball});
+  if (win > 0) items.push({key:'win', label:'Front windows', detail: win + ' ft × $6', amt: win*FIRST.glue});
+  if (arch > 0) items.push({key:'arch', label:'Archways', detail: arch + ' ft × $6', amt: arch*FIRST.glue});
+  if (gar > 0) items.push({key:'gar', label:'Garages', detail: gar + ' ft × $6', amt: gar*FIRST.glue});
+  if (tubs > 0) items.push({key:'tubs', label:'Storage (optional)', detail: tubs + ' tubs × $50', amt: tubs*FIRST.tub});
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('First hang — this season', margin, y);
+  y += 16;
+
+  let firstCalc = 0;
+  if (!items.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(100,100,100);
+    doc.text('No line items entered yet.', margin, y);
+    y += 18;
+    doc.setTextColor(15, 20, 25);
+  } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(100, 110, 120);
+    doc.text('ITEM', margin, y);
+    doc.text('DETAIL', margin + 150, y);
+    doc.text('AMOUNT', W - margin, y, { align: 'right' });
+    y += 8;
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, W - margin, y);
+    y += 14;
+    doc.setTextColor(15, 20, 25);
+    items.forEach(it => {
+      const lf = lineFinal(it.key, it.amt);
+      firstCalc += lf.final;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(it.label, margin, y);
+      doc.setFontSize(9);
+      doc.setTextColor(90, 90, 90);
+      doc.text(it.detail, margin + 150, y);
+      doc.setTextColor(15, 20, 25);
+      doc.setFontSize(10);
+      doc.text(pdfMoney(lf.final), W - margin, y, { align: 'right' });
+      y += 16;
+      if (y > 700) { doc.addPage(); y = 48; }
+    });
+  }
+
+  const f = finalize(firstCalc, $('firstOverride').value.trim(), $('firstDiscAmt').value.trim(), $('firstDiscPct').value.trim());
+  const contingencyOn = !!window._pluspContingencyOn;
+  const subtotal = f.final;
+  const contingency = contingencyOn ? Math.round(subtotal * 0.10 * 100) / 100 : 0;
+  const jobTotal = Math.round((subtotal + contingency) * 100) / 100;
+
+  y += 6;
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margin, y, W - margin, y);
+  y += 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  if (contingencyOn) {
+    doc.text('Subtotal', margin, y);
+    doc.text(pdfMoney(subtotal), W - margin, y, { align: 'right' });
+    y += 15;
+    doc.text('Contingency (10%)', margin, y);
+    doc.text(pdfMoney(contingency), W - margin, y, { align: 'right' });
+    y += 18;
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(15, 20, 25);
+  doc.text('First hang total', margin, y);
+  doc.setTextColor(180, 140, 40);
+  doc.text(pdfMoney(jobTotal), W - margin, y, { align: 'right' });
+  y += 28;
+
+  // Rehang
+  let rehangCalc = 0;
+  if (roof > 0) rehangCalc += roof * REHANG.roof;
+  if (trees > 0) rehangCalc += trees * REHANG.ball;
+  if (bushes > 0) rehangCalc += bushes * REHANG.ball;
+  if (win > 0) rehangCalc += win * REHANG.glue;
+  if (arch > 0) rehangCalc += arch * REHANG.glue;
+  if (gar > 0) rehangCalc += gar * REHANG.glue;
+  const r = finalize(rehangCalc, $('rehangOverride').value.trim(), $('rehangDiscAmt').value.trim(), $('rehangDiscPct').value.trim());
+
+  doc.setTextColor(15, 20, 25);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Suggested rehang — next season', margin, y);
+  y += 16;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Final price only (not itemized)', margin, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(pdfMoney(r.final), W - margin, y, { align: 'right' });
+  y += 26;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(40, 140, 90);
+  doc.text('✓  Takedown included', margin, y); y += 14;
+  doc.text('✓  Maintenance included', margin, y); y += 22;
+
+  if (notes) {
+    doc.setTextColor(15, 20, 25);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Notes', margin, y); y += 14;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const lines = doc.splitTextToSize(notes, W - margin * 2);
+    doc.text(lines, margin, y);
+    y += lines.length * 13 + 12;
+  }
+
+  y += 8;
+  if (y > 720) { doc.addPage(); y = 48; }
+  doc.setDrawColor(232, 184, 74);
+  doc.setLineWidth(1);
+  doc.line(margin, y, W - margin, y);
+  y += 16;
+  doc.setTextColor(100, 110, 120);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  const foot = doc.splitTextToSize('Thank you for choosing +P Holiday Lighting. This estimate is based on the measurements and photos provided and may be adjusted after an on-site review. Questions? Reply to pluspservices@gmail.com.', W - margin * 2);
+  doc.text(foot, margin, y);
+
+  const safeName = name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'estimate';
+  doc.save('+P-Estimate-' + safeName + '.pdf');
+}
+
+$('pdfBtn').addEventListener('click', () => {
+  try {
+    calc();
+    buildPdfEstimate();
+  } catch (err) {
+    alert('Could not build PDF: ' + (err && err.message ? err.message : err));
+  }
+});
+
 $('copyMaterialsBtn').addEventListener('click', async ()=>{
   const t = $('materialsText').textContent;
   try {
