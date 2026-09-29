@@ -50,7 +50,7 @@ textarea{min-height:72px;resize:vertical}
 
 <div class="card" id="formCard">
   <form id="quoteForm" novalidate>
-    <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+    <input type="checkbox" name="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
     <div class="row">
       <div>
         <label>First name</label>
@@ -91,7 +91,7 @@ textarea{min-height:72px;resize:vertical}
     <input name="email" id="email" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
     <label>Notes (colors, peaks, gate code, etc.)</label>
     <textarea name="notes" id="notes" placeholder="Anything that helps with the quote…"></textarea>
-    <p class="hint">Optional: add up to 3 house photos. They’re compressed on your phone, then emailed to us.</p>
+    <p class="hint">Optional: add up to 4 house photos. They’ll be attached to the email we receive.</p>
     <div class="file btn secondary" style="margin-top:0;margin-bottom:10px">
       Add house photos (optional)
       <input id="photos" type="file" accept="image/*" multiple />
@@ -104,12 +104,13 @@ textarea{min-height:72px;resize:vertical}
 
 <div class="card hidden" id="thanksCard">
   <p class="ok">Thanks — your quote request was sent to +P Holiday Lighting.</p>
-  <p class="hint" style="margin:0" id="thanksExtra">We’ll follow up soon. You can close this page.</p>
+  <p class="hint" style="margin:0">We’ll follow up soon. You can close this page.</p>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-const ENDPOINT = 'https://formsubmit.co/ajax/pluspservices@gmail.com';
+const ENDPOINT = 'https://api.web3forms.com/submit';
+const ACCESS_KEY = 4f873478-15cb-4e7a-9c1b-4273efd977da;
 let preparedFiles = [];
 
 function compressImage(file, maxSide, quality) {
@@ -137,17 +138,8 @@ function compressImage(file, maxSide, quality) {
   });
 }
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-
 $('photos').addEventListener('change', async () => {
-  const picked = [...$('photos').files].slice(0, 3);
+  const picked = [...$('photos').files].slice(0, 4);
   $('formErr').classList.add('hidden');
   $('submitBtn').disabled = true;
   $('submitBtn').textContent = 'Preparing photos…';
@@ -155,12 +147,10 @@ $('photos').addEventListener('change', async () => {
   const box = $('preview');
   box.innerHTML = '';
   for (const f of picked) {
-    const c = await compressImage(f, 1280, 0.72);
-    if (!c) continue;
-    // keep each under ~900KB so FormSubmit stays happy
-    let out = c;
-    if (out.size > 900 * 1024) {
-      const tighter = await compressImage(f, 960, 0.58);
+    let out = await compressImage(f, 1400, 0.78);
+    if (!out) continue;
+    if (out.size > 1024 * 1024) {
+      const tighter = await compressImage(f, 1100, 0.62);
       if (tighter) out = tighter;
     }
     preparedFiles.push(out);
@@ -188,9 +178,11 @@ $('quoteForm').addEventListener('submit', async (e) => {
   const btn = $('submitBtn');
   btn.disabled = true;
   btn.textContent = 'Sending…';
-
   try {
     const fd = new FormData();
+    fd.set('access_key', ACCESS_KEY);
+    fd.set('subject', '+P quote request — ' + first + ' ' + last);
+    fd.set('from_name', first + ' ' + last);
     fd.set('first_name', first);
     fd.set('last_name', last);
     fd.set('phone', phone);
@@ -201,61 +193,13 @@ $('quoteForm').addEventListener('submit', async (e) => {
     fd.set('zip', $('zip').value.trim());
     fd.set('notes', $('notes').value.trim());
     const em = $('email').value.trim();
-    if (em) {
-      fd.set('email', em);
-      fd.set('_replyto', em);
-    }
-    fd.set('_subject', '+P quote request — ' + first + ' ' + last);
-    fd.set('_template', 'table');
-    fd.set('_captcha', 'false');
-    fd.set('_honey', '');
+    if (em) fd.set('email', em);
     fd.set('photo_count', String(preparedFiles.length));
-
-    // Prefer real file attachments (FormData + AJAX, no Content-Type header).
-    // Also embed small data-URLs as backup text fields (some FormSubmit emails drop files).
-    for (let i = 0; i < preparedFiles.length; i++) {
-      const f = preparedFiles[i];
-      fd.append(i === 0 ? 'attachment' : ('attachment' + (i + 1)), f, f.name);
-      if (f.size <= 350 * 1024) {
-        try {
-          const dataUrl = await fileToDataUrl(f);
-          fd.set('photo_' + (i + 1) + '_preview', dataUrl);
-        } catch (_) {}
-      } else {
-        fd.set('photo_' + (i + 1) + '_note', f.name + ' (' + Math.round(f.size / 1024) + ' KB) — attached if supported');
-      }
-    }
-
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      body: fd,
-      headers: { Accept: 'application/json' }
-    });
+    preparedFiles.forEach((f, i) => fd.append('attachment', f, f.name || ('photo' + (i + 1) + '.jpg')));
+    const res = await fetch(ENDPOINT, { method: 'POST', body: fd });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      // Retry once without photo payloads if FormSubmit 500s on files
-      if (preparedFiles.length && (res.status >= 500 || res.status === 413)) {
-        const fd2 = new FormData();
-        for (const [k, v] of fd.entries()) {
-          if (typeof v === 'string' && !String(k).startsWith('photo_') && k !== 'attachment' && !String(k).startsWith('attachment')) {
-            fd2.set(k, v);
-          } else if (typeof v === 'string' && ['first_name','last_name','phone','street','subdivision','city','state','zip','notes','email','_replyto','_subject','_template','_captcha','_honey','photo_count'].includes(k)) {
-            fd2.set(k, v);
-          }
-        }
-        fd2.set('photo_count', String(preparedFiles.length));
-        fd2.set('photos_note', 'Customer selected ' + preparedFiles.length + ' photo(s). FormSubmit could not attach them — please text (214) 995-3002 for pictures.');
-        const res2 = await fetch(ENDPOINT, { method: 'POST', body: fd2, headers: { Accept: 'application/json' } });
-        const data2 = await res2.json().catch(() => ({}));
-        if (!res2.ok) throw new Error((data2 && (data2.message || data2.error)) || ('Send failed (' + res2.status + ')'));
-        $('thanksExtra').textContent = 'Request sent. If you added photos, please also text them to (214) 995-3002 so we for sure get them.';
-      } else {
-        throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
-      }
-    } else {
-      $('thanksExtra').textContent = preparedFiles.length
-        ? 'We’ll follow up soon. If you added photos, they should be on the email (or text us at (214) 995-3002 to be sure).'
-        : 'We’ll follow up soon. You can close this page.';
+    if (!res.ok || data.success === false) {
+      throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
     }
     $('formCard').classList.add('hidden');
     $('thanksCard').classList.remove('hidden');
