@@ -6,6 +6,7 @@
 var PROSPECTS_SHEET_ID = '1lRYPaL2TR1YM1zj5A983FUMdOq74OKo_z3V4CTI84Tk';
 var LEAD_PHOTOS_FOLDER_ID = '1c2sHhFctt5DU9ZSOOqfB5-plMKeoNyu6';
 var QUOTES_FOLDER_ID = '1JPLVPb0qwDYKwaKPu86Hdo3jgQZhrj9x';
+var LOGO_FILE_ID = '1idksk7mIhRdB0dpoQ7xc0S5W3bS2i7Un';
 
 function doPost(e) {
   try {
@@ -259,11 +260,22 @@ function docIdFromUrl_(url) {
   return m ? m[1] : '';
 }
 
+function insertLogo_(body) {
+  try {
+    var blob = DriveApp.getFileById(LOGO_FILE_ID).getBlob();
+    var img = body.appendImage(blob);
+    img.setWidth(110);
+    img.setHeight(110);
+    body.appendParagraph('');
+  } catch (e) {}
+}
+
 function fillEstimateDocBody_(doc, data, snap, stamp) {
   var first = clean_(data.first_name);
   var last = clean_(data.last_name);
   var body = doc.getBody();
   body.clear();
+  insertLogo_(body);
   body.appendParagraph('+P Holiday Lighting').setHeading(DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph('Christmas Light Installation Estimate').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   body.appendParagraph(stamp || '');
