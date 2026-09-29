@@ -256,9 +256,14 @@ textarea{min-height:64px;resize:vertical}
 <div class="card" id="out">
   <div class="section">First hang (this season)</div>
   <div id="lines"></div>
-  <div class="calcLabel">First hang total</div>
-  <div class="total" id="totalCalc">$0</div>
+  <div class="calcLabel">Subtotal (before contingency)</div>
+  <div class="total" id="totalCalc" style="font-size:1.1rem;color:var(--muted)">$0</div>
+  <div class="calcLabel">Contingency (10%)</div>
+  <div class="total" id="contingencyAmt" style="font-size:1.1rem;color:var(--muted)">$0</div>
+  <div class="calcLabel">First hang job total</div>
+  <div class="total" id="jobTotal">$0</div>
   <div class="total" id="totalFinal" style="display:none">$0</div>
+  <p class="hint">10% added on every new job for unexpected expenses.</p>
   <button class="btn toggle tiny" type="button" id="toggleFirstOverride">Override</button>
   <div class="overridePanel" id="firstOverridePanel">
     <div class="override">
@@ -275,8 +280,8 @@ textarea{min-height:64px;resize:vertical}
         <input id="firstDiscPct" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="" placeholder="0" />
       </div>
     </div>
-    <p class="hint">$ or % (or both), after override.</p>
-    <div class="calcLabel">Final after override/discount</div>
+    <p class="hint">$ or % (or both), after override. Contingency still applies after this.</p>
+    <div class="calcLabel">After override/discount (before 10%)</div>
     <div class="total" id="totalFinalShown">$0</div>
   </div>
   <div class="note" id="firstNote" hidden></div>
@@ -544,9 +549,14 @@ function calc(){
   const r = finalize(rehangCalc, $('rehangOverride').value.trim(), $('rehangDiscAmt').value.trim(), $('rehangDiscPct').value.trim());
   const firstAdj = f.hasOverride || f.discPct || f.discAmt;
   const rehangAdj = r.hasOverride || r.discPct || r.discAmt;
-  $('totalCalc').textContent = money(firstAdj ? f.final : firstCalc);
-  $('totalFinal').textContent = money(f.final);
-  if ($('totalFinalShown')) $('totalFinalShown').textContent = money(f.final);
+  const subtotal = f.final;
+  const contingency = Math.round(subtotal * 0.10 * 100) / 100;
+  const jobTotal = Math.round((subtotal + contingency) * 100) / 100;
+  $('totalCalc').textContent = money(subtotal);
+  if ($('contingencyAmt')) $('contingencyAmt').textContent = money(contingency);
+  if ($('jobTotal')) $('jobTotal').textContent = money(jobTotal);
+  $('totalFinal').textContent = money(jobTotal);
+  if ($('totalFinalShown')) $('totalFinalShown').textContent = money(subtotal);
   $('rehangCalc').textContent = money(rehangAdj ? r.final : rehangCalc);
   $('rehangFinal').textContent = money(r.final);
   if ($('rehangFinalShown')) $('rehangFinalShown').textContent = money(r.final);
@@ -555,8 +565,9 @@ function calc(){
   if (f.hasOverride) fNote.push('Override used');
   if (f.discPct) fNote.push(f.discPct + '% off');
   if (f.discAmt) fNote.push(money(f.discAmt) + ' off');
-  $('firstNote').hidden = !fNote.length;
-  $('firstNote').textContent = fNote.length ? fNote.join(' · ') : '';
+  fNote.push('10% contingency included');
+  $('firstNote').hidden = false;
+  $('firstNote').textContent = fNote.join(' · ');
 
   const rNote = [];
   if (r.hasOverride) rNote.push('Override used');
@@ -596,7 +607,9 @@ function calc(){
       if (f.discAmt) bits.push(money(f.discAmt));
       text += 'First hang discount: ' + bits.join(' + ') + '\n';
     }
-    text += 'First hang total: ' + money(f.final) + '\n';
+    text += 'First hang subtotal: ' + money(subtotal) + '\n';
+    text += 'Contingency (10%): ' + money(contingency) + '\n';
+    text += 'First hang total: ' + money(jobTotal) + '\n';
   }
   if (rehang.length || rehangCalc > 0 || r.final > 0) {
     if (r.hasOverride || r.discPct || r.discAmt) {
