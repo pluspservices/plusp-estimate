@@ -256,14 +256,17 @@ textarea{min-height:64px;resize:vertical}
 <div class="card" id="out">
   <div class="section">First hang (this season)</div>
   <div id="lines"></div>
-  <div class="calcLabel">Subtotal (before contingency)</div>
+  <div class="calcLabel">Subtotal</div>
   <div class="total" id="totalCalc" style="font-size:1.1rem;color:var(--muted)">$0</div>
-  <div class="calcLabel">Contingency (10%)</div>
-  <div class="total" id="contingencyAmt" style="font-size:1.1rem;color:var(--muted)">$0</div>
+  <button class="btn toggle tiny" type="button" id="toggleContingency" aria-pressed="true">Contingency 10%: On</button>
+  <div id="contingencyRow">
+    <div class="calcLabel">Contingency (10%)</div>
+    <div class="total" id="contingencyAmt" style="font-size:1.1rem;color:var(--muted)">$0</div>
+  </div>
   <div class="calcLabel">First hang job total</div>
   <div class="total" id="jobTotal">$0</div>
   <div class="total" id="totalFinal" style="display:none">$0</div>
-  <p class="hint">10% added on every new job for unexpected expenses.</p>
+  <p class="hint">Optional 10% for unexpected expenses — tap the button to include or remove it.</p>
   <button class="btn toggle tiny" type="button" id="toggleFirstOverride">Override</button>
   <div class="overridePanel" id="firstOverridePanel">
     <div class="override">
@@ -550,13 +553,20 @@ function calc(){
   const firstAdj = f.hasOverride || f.discPct || f.discAmt;
   const rehangAdj = r.hasOverride || r.discPct || r.discAmt;
   const subtotal = f.final;
-  const contingency = Math.round(subtotal * 0.10 * 100) / 100;
+  const contingencyOn = !!window._pluspContingencyOn;
+  const contingency = contingencyOn ? Math.round(subtotal * 0.10 * 100) / 100 : 0;
   const jobTotal = Math.round((subtotal + contingency) * 100) / 100;
   $('totalCalc').textContent = money(subtotal);
   if ($('contingencyAmt')) $('contingencyAmt').textContent = money(contingency);
+  if ($('contingencyRow')) $('contingencyRow').style.display = contingencyOn ? '' : 'none';
   if ($('jobTotal')) $('jobTotal').textContent = money(jobTotal);
   $('totalFinal').textContent = money(jobTotal);
   if ($('totalFinalShown')) $('totalFinalShown').textContent = money(subtotal);
+  const tog = $('toggleContingency');
+  if (tog) {
+    tog.setAttribute('aria-pressed', contingencyOn ? 'true' : 'false');
+    tog.textContent = contingencyOn ? 'Contingency 10%: On' : 'Contingency 10%: Off';
+  }
   $('rehangCalc').textContent = money(rehangAdj ? r.final : rehangCalc);
   $('rehangFinal').textContent = money(r.final);
   if ($('rehangFinalShown')) $('rehangFinalShown').textContent = money(r.final);
@@ -565,9 +575,9 @@ function calc(){
   if (f.hasOverride) fNote.push('Override used');
   if (f.discPct) fNote.push(f.discPct + '% off');
   if (f.discAmt) fNote.push(money(f.discAmt) + ' off');
-  fNote.push('10% contingency included');
-  $('firstNote').hidden = false;
-  $('firstNote').textContent = fNote.join(' · ');
+  if (contingencyOn) fNote.push('10% contingency included');
+  $('firstNote').hidden = !fNote.length;
+  $('firstNote').textContent = fNote.length ? fNote.join(' · ') : '';
 
   const rNote = [];
   if (r.hasOverride) rNote.push('Override used');
@@ -607,9 +617,14 @@ function calc(){
       if (f.discAmt) bits.push(money(f.discAmt));
       text += 'First hang discount: ' + bits.join(' + ') + '\n';
     }
-    text += 'First hang subtotal: ' + money(subtotal) + '\n';
-    text += 'Contingency (10%): ' + money(contingency) + '\n';
-    text += 'First hang total: ' + money(jobTotal) + '\n';
+    if (contingencyOn) {
+      text += 'First hang subtotal: ' + money(subtotal) + '\n';
+      text += 'Contingency (10%): ' + money(contingency) + '\n';
+      text += 'First hang total: ' + money(jobTotal) + '\n';
+    } else {
+      text += 'First hang total: ' + money(jobTotal) + '\n';
+    }
+
   }
   if (rehang.length || rehangCalc > 0 || r.final > 0) {
     if (r.hasOverride || r.discPct || r.discAmt) {
@@ -840,6 +855,14 @@ $('copyBtn').addEventListener('click', async ()=>{
 });
 
 
+window._pluspContingencyOn = true;
+if ($('toggleContingency')) {
+  $('toggleContingency').addEventListener('click', () => {
+    window._pluspContingencyOn = !window._pluspContingencyOn;
+    calc();
+  });
+}
+
 function customerFormUrl(){
   try { return new URL('customer.html', location.href).href; }
   catch { return 'https://pluspservices.github.io/plusp-estimate/customer.html'; }
@@ -891,7 +914,8 @@ function snapshotForm(){
     lineAdj,
     treeLog: treeLog.slice(),
     bushLog: bushLog.slice(),
-    copyText: $('copyText').textContent
+    copyText: $('copyText').textContent,
+    contingencyOn: !!window._pluspContingencyOn
   };
 }
 function applySnapshot(q){
@@ -901,6 +925,7 @@ function applySnapshot(q){
     $(id).value = q.fields[id];
   });
   if (!($('state').value || '').trim()) $('state').value = 'TX';
+  if (typeof q.contingencyOn === 'boolean') window._pluspContingencyOn = q.contingencyOn;
   treeLog = Array.isArray(q.treeLog) ? q.treeLog.slice() : [];
   bushLog = Array.isArray(q.bushLog) ? q.bushLog.slice() : [];
   renderTreeLog();
