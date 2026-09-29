@@ -49,12 +49,8 @@ textarea{min-height:72px;resize:vertical}
 </div>
 
 <div class="card" id="formCard">
-  <form id="quoteForm" action="https://formsubmit.co/pluspservices@gmail.com" method="POST" enctype="multipart/form-data" novalidate>
+  <form id="quoteForm" novalidate>
     <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
-    <input type="hidden" name="_subject" id="subjectField" value="+P quote request" />
-    <input type="hidden" name="_template" value="table" />
-    <input type="hidden" name="_captcha" value="false" />
-    <input type="hidden" name="_next" value="https://pluspservices.github.io/plusp-estimate/customer.html?sent=1" />
     <div class="row">
       <div>
         <label>First name</label>
@@ -93,15 +89,13 @@ textarea{min-height:72px;resize:vertical}
     </div>
     <label>Your email (optional — so we can reply)</label>
     <input name="email" id="email" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
-    <input type="hidden" name="_replyto" id="replytoField" value="" />
     <label>Notes (colors, peaks, gate code, etc.)</label>
     <textarea name="notes" id="notes" placeholder="Anything that helps with the quote…"></textarea>
-    <p class="hint">Optional: add up to 4 house photos (they’ll be attached to the email we receive). Keep them under ~10 MB total.</p>
+    <p class="hint">Optional: add up to 3 house photos. They’re compressed on your phone, then emailed to us.</p>
     <div class="file btn secondary" style="margin-top:0;margin-bottom:10px">
       Add house photos (optional)
       <input id="photos" type="file" accept="image/*" multiple />
     </div>
-    <div id="fileSlots"></div>
     <div class="photos" id="preview"></div>
     <button class="btn" type="submit" id="submitBtn">Submit quote request</button>
     <p class="err hidden" id="formErr"></p>
@@ -110,111 +104,168 @@ textarea{min-height:72px;resize:vertical}
 
 <div class="card hidden" id="thanksCard">
   <p class="ok">Thanks — your quote request was sent to +P Holiday Lighting.</p>
-  <p class="hint" style="margin:0">We’ll follow up soon. You can close this page.</p>
+  <p class="hint" style="margin:0" id="thanksExtra">We’ll follow up soon. You can close this page.</p>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-let selectedFiles = [];
-
-if (new URLSearchParams(location.search).get('sent') === '1') {
-  $('formCard').classList.add('hidden');
-  $('thanksCard').classList.remove('hidden');
-}
+const ENDPOINT = 'https://formsubmit.co/ajax/pluspservices@gmail.com';
+let preparedFiles = [];
 
 function compressImage(file, maxSide, quality) {
   return new Promise((resolve) => {
-    if (!file.type.startsWith('image/')) { resolve(file); return; }
+    if (!file.type.startsWith('image/')) { resolve(null); return; }
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       URL.revokeObjectURL(url);
       let w = img.naturalWidth, h = img.naturalHeight;
       const scale = Math.min(1, maxSide / Math.max(w, h));
-      w = Math.round(w * scale); h = Math.round(h * scale);
+      w = Math.max(1, Math.round(w * scale));
+      h = Math.max(1, Math.round(h * scale));
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       canvas.toBlob((blob) => {
-        if (!blob) { resolve(file); return; }
+        if (!blob) { resolve(null); return; }
         const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
         resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }));
       }, 'image/jpeg', quality);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
   });
 }
 
-function renderPreview() {
-  const box = $('preview');
-  box.innerHTML = '';
-  selectedFiles.forEach(f => {
-    const img = document.createElement('img');
-    img.src = URL.createObjectURL(f);
-    box.appendChild(img);
-  });
-}
-
-function syncFileInputs() {
-  const slots = $('fileSlots');
-  slots.innerHTML = '';
-  selectedFiles.forEach((f, i) => {
-    // FormSubmit wants separate file fields; name "attachment" for the first is conventional
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.name = i === 0 ? 'attachment' : ('attachment' + (i + 1));
-    input.className = 'hp';
-    input.tabIndex = -1;
-    const dt = new DataTransfer();
-    dt.items.add(f);
-    input.files = dt.files;
-    slots.appendChild(input);
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
   });
 }
 
 $('photos').addEventListener('change', async () => {
-  const picked = [...$('photos').files].slice(0, 4);
+  const picked = [...$('photos').files].slice(0, 3);
   $('formErr').classList.add('hidden');
   $('submitBtn').disabled = true;
   $('submitBtn').textContent = 'Preparing photos…';
-  selectedFiles = [];
+  preparedFiles = [];
+  const box = $('preview');
+  box.innerHTML = '';
   for (const f of picked) {
-    selectedFiles.push(await compressImage(f, 1600, 0.82));
+    const c = await compressImage(f, 1280, 0.72);
+    if (!c) continue;
+    // keep each under ~900KB so FormSubmit stays happy
+    let out = c;
+    if (out.size > 900 * 1024) {
+      const tighter = await compressImage(f, 960, 0.58);
+      if (tighter) out = tighter;
+    }
+    preparedFiles.push(out);
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(out);
+    box.appendChild(img);
   }
-  const total = selectedFiles.reduce((n, f) => n + f.size, 0);
-  if (total > 9.5 * 1024 * 1024) {
-    $('formErr').textContent = 'Photos are still too large after compressing. Please pick fewer or smaller pictures.';
-    $('formErr').classList.remove('hidden');
-    selectedFiles = [];
-  }
-  renderPreview();
-  syncFileInputs();
   $('photos').value = '';
   $('submitBtn').disabled = false;
   $('submitBtn').textContent = 'Submit quote request';
 });
 
-$('quoteForm').addEventListener('submit', (e) => {
+$('quoteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
   $('formErr').classList.add('hidden');
   const first = $('firstName').value.trim();
   const last = $('lastName').value.trim();
   const phone = $('phone').value.trim();
   const street = $('street').value.trim();
   if (!first || !last || !phone || !street) {
-    e.preventDefault();
     $('formErr').textContent = 'Please fill first name, last name, phone, and street address.';
     $('formErr').classList.remove('hidden');
     return;
   }
-  $('subjectField').value = '+P quote request — ' + first + ' ' + last;
-  const em = $('email').value.trim();
-  $('replytoField').value = em || '';
-  syncFileInputs();
-  $('submitBtn').disabled = true;
-  $('submitBtn').textContent = 'Sending…';
-  // Native multipart POST — FormSubmit AJAX cannot attach files
+  const btn = $('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const fd = new FormData();
+    fd.set('first_name', first);
+    fd.set('last_name', last);
+    fd.set('phone', phone);
+    fd.set('street', street);
+    fd.set('subdivision', $('subdivision').value.trim());
+    fd.set('city', $('city').value.trim());
+    fd.set('state', ($('state').value.trim() || 'TX').toUpperCase());
+    fd.set('zip', $('zip').value.trim());
+    fd.set('notes', $('notes').value.trim());
+    const em = $('email').value.trim();
+    if (em) {
+      fd.set('email', em);
+      fd.set('_replyto', em);
+    }
+    fd.set('_subject', '+P quote request — ' + first + ' ' + last);
+    fd.set('_template', 'table');
+    fd.set('_captcha', 'false');
+    fd.set('_honey', '');
+    fd.set('photo_count', String(preparedFiles.length));
+
+    // Prefer real file attachments (FormData + AJAX, no Content-Type header).
+    // Also embed small data-URLs as backup text fields (some FormSubmit emails drop files).
+    for (let i = 0; i < preparedFiles.length; i++) {
+      const f = preparedFiles[i];
+      fd.append(i === 0 ? 'attachment' : ('attachment' + (i + 1)), f, f.name);
+      if (f.size <= 350 * 1024) {
+        try {
+          const dataUrl = await fileToDataUrl(f);
+          fd.set('photo_' + (i + 1) + '_preview', dataUrl);
+        } catch (_) {}
+      } else {
+        fd.set('photo_' + (i + 1) + '_note', f.name + ' (' + Math.round(f.size / 1024) + ' KB) — attached if supported');
+      }
+    }
+
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      body: fd,
+      headers: { Accept: 'application/json' }
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      // Retry once without photo payloads if FormSubmit 500s on files
+      if (preparedFiles.length && (res.status >= 500 || res.status === 413)) {
+        const fd2 = new FormData();
+        for (const [k, v] of fd.entries()) {
+          if (typeof v === 'string' && !String(k).startsWith('photo_') && k !== 'attachment' && !String(k).startsWith('attachment')) {
+            fd2.set(k, v);
+          } else if (typeof v === 'string' && ['first_name','last_name','phone','street','subdivision','city','state','zip','notes','email','_replyto','_subject','_template','_captcha','_honey','photo_count'].includes(k)) {
+            fd2.set(k, v);
+          }
+        }
+        fd2.set('photo_count', String(preparedFiles.length));
+        fd2.set('photos_note', 'Customer selected ' + preparedFiles.length + ' photo(s). FormSubmit could not attach them — please text (214) 995-3002 for pictures.');
+        const res2 = await fetch(ENDPOINT, { method: 'POST', body: fd2, headers: { Accept: 'application/json' } });
+        const data2 = await res2.json().catch(() => ({}));
+        if (!res2.ok) throw new Error((data2 && (data2.message || data2.error)) || ('Send failed (' + res2.status + ')'));
+        $('thanksExtra').textContent = 'Request sent. If you added photos, please also text them to (214) 995-3002 so we for sure get them.';
+      } else {
+        throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
+      }
+    } else {
+      $('thanksExtra').textContent = preparedFiles.length
+        ? 'We’ll follow up soon. If you added photos, they should be on the email (or text us at (214) 995-3002 to be sure).'
+        : 'We’ll follow up soon. You can close this page.';
+    }
+    $('formCard').classList.add('hidden');
+    $('thanksCard').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  } catch (err) {
+    $('formErr').textContent = 'Could not send right now. Try again, or text (214) 995-3002. (' + (err && err.message ? err.message : err) + ')';
+    $('formErr').classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Submit quote request';
+  }
 });
 </script>
 </body>
