@@ -91,7 +91,7 @@ textarea{min-height:72px;resize:vertical}
     <input name="email" id="email" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
     <label>Notes (colors, peaks, gate code, etc.)</label>
     <textarea name="notes" id="notes" placeholder="Anything that helps with the quote…"></textarea>
-    <p class="hint">Optional: add up to 4 house photos. They’ll be attached to the email we receive.</p>
+    <p class="hint">Optional: add up to 3 house photos. We’ll include them in the email (compressed). You can also text extras to (214) 995-3002.</p>
     <div class="file btn secondary" style="margin-top:0;margin-bottom:10px">
       Add house photos (optional)
       <input id="photos" type="file" accept="image/*" multiple />
@@ -104,10 +104,11 @@ textarea{min-height:72px;resize:vertical}
 
 <div class="card hidden" id="thanksCard">
   <p class="ok">Thanks — your quote request was sent to +P Holiday Lighting.</p>
-  <p class="hint" style="margin:0">We’ll follow up soon. You can close this page.</p>
+  <p class="hint" style="margin:0" id="thanksExtra">We’ll follow up soon. You can close this page.</p>
 </div>
 
 <script>
+
 const $ = id => document.getElementById(id);
 const ENDPOINT = 'https://api.web3forms.com/submit';
 const ACCESS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
@@ -137,9 +138,17 @@ function compressImage(file, maxSide, quality) {
     img.src = url;
   });
 }
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ''));
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
 
 $('photos').addEventListener('change', async () => {
-  const picked = [...$('photos').files].slice(0, 4);
+  const picked = [...$('photos').files].slice(0, 3);
   $('formErr').classList.add('hidden');
   $('submitBtn').disabled = true;
   $('submitBtn').textContent = 'Preparing photos…';
@@ -147,10 +156,10 @@ $('photos').addEventListener('change', async () => {
   const box = $('preview');
   box.innerHTML = '';
   for (const f of picked) {
-    let out = await compressImage(f, 1400, 0.78);
+    let out = await compressImage(f, 1000, 0.55);
     if (!out) continue;
-    if (out.size > 1024 * 1024) {
-      const tighter = await compressImage(f, 1100, 0.62);
+    if (out.size > 220 * 1024) {
+      const tighter = await compressImage(f, 720, 0.45);
       if (tighter) out = tighter;
     }
     preparedFiles.push(out);
@@ -179,28 +188,70 @@ $('quoteForm').addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = 'Sending…';
   try {
-    const fd = new FormData();
-    fd.set('access_key', ACCESS_KEY);
-    fd.set('subject', '+P quote request — ' + first + ' ' + last);
-    fd.set('from_name', first + ' ' + last);
-    fd.set('first_name', first);
-    fd.set('last_name', last);
-    fd.set('phone', phone);
-    fd.set('street', street);
-    fd.set('subdivision', $('subdivision').value.trim());
-    fd.set('city', $('city').value.trim());
-    fd.set('state', ($('state').value.trim() || 'TX').toUpperCase());
-    fd.set('zip', $('zip').value.trim());
-    fd.set('notes', $('notes').value.trim());
+    const subdivision = $('subdivision').value.trim();
+    const city = $('city').value.trim();
+    const state = ($('state').value.trim() || 'TX').toUpperCase();
+    const zip = $('zip').value.trim();
+    const notes = $('notes').value.trim();
     const em = $('email').value.trim();
-    if (em) fd.set('email', em);
-    fd.set('photo_count', String(preparedFiles.length));
-    preparedFiles.forEach((f, i) => fd.append('attachment', f, f.name || ('photo' + (i + 1) + '.jpg')));
-    const res = await fetch(ENDPOINT, { method: 'POST', body: fd });
+
+    // Free Web3Forms: no file uploads. Embed tiny JPEG data-URLs in HTML message body.
+    let photoHtml = '';
+    const photoMeta = [];
+    for (let i = 0; i < preparedFiles.length; i++) {
+      const f = preparedFiles[i];
+      const dataUrl = await fileToDataUrl(f);
+      photoMeta.push((f.name || ('photo' + (i + 1))) + ' ~' + Math.round(f.size / 1024) + 'KB');
+      // Keep total payload reasonable
+      if (dataUrl.length < 350000) {
+        photoHtml += '<p><b>Photo ' + (i + 1) + '</b></p><p><img src="' + dataUrl + '" alt="photo ' + (i + 1) + '" style="max-width:100%;height:auto;border:1px solid #ccc"/></p>';
+      } else {
+        photoHtml += '<p><b>Photo ' + (i + 1) + '</b> too large to embed — ask customer to text (214) 995-3002.</p>';
+      }
+    }
+
+    const messageHtml =
+      '<p><b>+P Holiday Lighting — quote request</b></p>' +
+      '<p><b>Name:</b> ' + first + ' ' + last + '<br/>' +
+      '<b>Phone:</b> ' + phone + '<br/>' +
+      (em ? ('<b>Email:</b> ' + em + '<br/>') : '') +
+      '<b>Address:</b> ' + street + '<br/>' +
+      (subdivision ? ('<b>Subdivision:</b> ' + subdivision + '<br/>') : '') +
+      '<b>City/State/ZIP:</b> ' + [city, state].filter(Boolean).join(', ') + ' ' + zip + '</p>' +
+      (notes ? ('<p><b>Notes:</b><br/>' + notes.replace(/\n/g, '<br/>') + '</p>') : '') +
+      (photoMeta.length ? ('<p><b>Photos:</b> ' + photoMeta.join('; ') + '</p>') : '<p><b>Photos:</b> none</p>') +
+      photoHtml +
+      '<p style="color:#666">If photos are missing, text (214) 995-3002.</p>';
+
+    const payload = {
+      access_key: ACCESS_KEY,
+      subject: '+P quote request — ' + first + ' ' + last,
+      from_name: first + ' ' + last,
+      name: first + ' ' + last,
+      phone: phone,
+      street: street,
+      subdivision: subdivision,
+      city: city,
+      state: state,
+      zip: zip,
+      notes: notes,
+      photo_count: String(preparedFiles.length),
+      message: messageHtml
+    };
+    if (em) payload.email = em;
+
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload)
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) {
       throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
     }
+    $('thanksExtra').textContent = preparedFiles.length
+      ? 'We’ll follow up soon. Photos were included in the email when size allowed; otherwise text (214) 995-3002.'
+      : 'We’ll follow up soon. You can close this page.';
     $('formCard').classList.add('hidden');
     $('thanksCard').classList.remove('hidden');
     window.scrollTo(0, 0);
