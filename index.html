@@ -81,6 +81,14 @@ textarea{min-height:64px;resize:vertical}
 @media (max-width:780px){.split{grid-template-columns:1fr}.split > .card{margin-bottom:12px}}
 .calcBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch}
 .calcBtns .btn{width:100%;padding:8px 6px;font-size:.72rem;font-weight:600;margin:0;line-height:1.25;border-radius:8px}
+.actionRow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.actionRow .btn{margin:0}
+.savedList{list-style:none;margin:8px 0 0;padding:0}
+.savedList li{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid #243044}
+.savedList .meta{font-size:.78rem;color:var(--muted)}
+.savedList .title{font-weight:650;font-size:.95rem}
+.savedList .rowBtns{display:flex;gap:8px}
+.savedList .rowBtns .btn{flex:1;padding:8px;font-size:.8rem;margin:0}
 .split .row3{grid-template-columns:1fr 1fr 1fr;gap:6px}
 .split .row3 input,.split .row3 select{font-size:.9rem;padding:8px 6px;margin-bottom:8px}
 .split .row3 label{font-size:.68rem;margin-bottom:4px}
@@ -306,6 +314,13 @@ textarea{min-height:64px;resize:vertical}
   </ul>
   <div class="itemized" id="copyText"></div>
   <button class="btn" type="button" id="copyBtn">Copy estimate text</button>
+  <div class="actionRow">
+    <button class="btn secondary small" type="button" id="saveQuoteBtn">Save quote</button>
+    <button class="btn secondary small" type="button" id="clearFormBtn">Clear form</button>
+  </div>
+  <div class="section">Saved quotes</div>
+  <p class="hint" style="margin-top:0">Stored on this phone only. Open one to keep editing.</p>
+  <ul class="savedList" id="savedList"></ul>
 </div>
 
 <script>
@@ -313,7 +328,7 @@ const FIRST = { roof:5, ball:25, glue:6, tub:50 };
 const REHANG = { roof:2.5, ball:25, glue:3.5 };
 const $ = id => document.getElementById(id);
 const money = n => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', {minimumFractionDigits: Math.abs(n % 1) > 1e-9 ? 2 : 0, maximumFractionDigits: 2});
-const treeLog = [];
+let treeLog = [];
 
 function treeBallsFromInputs() {
   const diamIn = parseFloat($('treeDiam').value);
@@ -340,7 +355,7 @@ function updateTreePreview() {
   $('treePreview').textContent = msg;
 }
 
-const bushLog = [];
+let bushLog = [];
 
 function bushBallsFromInputs() {
   const perim = parseFloat($('bushPerim').value); // length around in feet
@@ -812,64 +827,6 @@ $('copyBtn').addEventListener('click', async ()=>{
 });
 
 
-function b64urlEncode(str){
-  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
-function b64urlDecode(s){
-  s = String(s||'').replace(/-/g,'+').replace(/_/g,'/');
-  while (s.length % 4) s += '=';
-  return decodeURIComponent(escape(atob(s)));
-}
-function applyCustomerInfo(data){
-  if (!data || typeof data !== 'object') return false;
-  const set = (id, v) => { if (v != null && String(v).trim() !== '') $(id).value = String(v).trim(); };
-  set('firstName', data.firstName);
-  set('lastName', data.lastName);
-  set('phone', data.phone);
-  set('street', data.street);
-  set('subdivision', data.subdivision);
-  set('city', data.city);
-  set('state', data.state || 'TX');
-  set('zip', data.zip);
-  if (data.notes && String(data.notes).trim()) {
-    const existing = $('notes').value.trim();
-    const n = String(data.notes).trim();
-    $('notes').value = existing ? (existing + '\n' + n) : n;
-  }
-  calc();
-  return true;
-}
-function parseCustomerPaste(raw){
-  const t = String(raw||'').trim();
-  if (!t) return null;
-  const code = t.match(/PLUSP1:([A-Za-z0-9_-]+)/);
-  if (code) {
-    try { return JSON.parse(b64urlDecode(code[1])); } catch(e) {}
-  }
-  if (t.startsWith('{')) {
-    try { return JSON.parse(t); } catch(e) {}
-  }
-  // loose line parser for human summary
-  const data = {};
-  const lines = t.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  for (const line of lines) {
-    const m = line.match(/^(First name|Last name|Phone|Street|Subdivision|City|State|ZIP|Notes)\s*:\s*(.*)$/i);
-    if (m) {
-      const k = m[1].toLowerCase();
-      const v = m[2].trim();
-      if (k === 'first name') data.firstName = v;
-      else if (k === 'last name') data.lastName = v;
-      else if (k === 'phone') data.phone = v;
-      else if (k === 'street') data.street = v;
-      else if (k === 'subdivision') data.subdivision = v;
-      else if (k === 'city') data.city = v;
-      else if (k === 'state') data.state = v;
-      else if (k === 'zip') data.zip = v;
-      else if (k === 'notes') data.notes = v;
-    }
-  }
-  return Object.keys(data).length ? data : null;
-}
 function customerFormUrl(){
   try { return new URL('customer.html', location.href).href; }
   catch { return 'https://pluspservices.github.io/plusp-estimate/customer.html'; }
@@ -884,17 +841,162 @@ $('copyCustomerLink').addEventListener('click', async () => {
     prompt('Copy this customer form link:', url);
   }
 });
-(function loadFromHash(){
-  const h = location.hash || '';
-  const m = h.match(/[#&]c=([A-Za-z0-9_-]+)/);
-  if (!m) return;
-  try {
-    const data = JSON.parse(b64urlDecode(m[1]));
-    applyCustomerInfo(data);
-    history.replaceState(null, '', location.pathname + location.search);
-  } catch (e) {}
-})();
 
+const QUOTE_STORE = 'plusp_saved_quotes_v1';
+const FIELD_IDS = [
+  'firstName','lastName','phone','street','subdivision','city','state','zip','notes',
+  'roofFt','winFt','archFt','garFt','treeBalls','bushBalls','tubs',
+  'firstOverride','firstDiscAmt','firstDiscPct','rehangOverride','rehangDiscAmt','rehangDiscPct',
+  'treeDiam','treeHeight','treeSpacing','bushPerim','bushHeight','bushSpacing'
+];
+const NUM_ZERO_IDS = ['roofFt','winFt','archFt','garFt','treeBalls','bushBalls','tubs'];
+const CLEAR_EMPTY_IDS = ['firstOverride','firstDiscAmt','firstDiscPct','rehangOverride','rehangDiscAmt','rehangDiscPct'];
+
+function loadQuotes(){
+  try { return JSON.parse(localStorage.getItem(QUOTE_STORE) || '[]'); }
+  catch { return []; }
+}
+function persistQuotes(list){
+  localStorage.setItem(QUOTE_STORE, JSON.stringify(list.slice(0, 40)));
+}
+function snapshotForm(){
+  const fields = {};
+  FIELD_IDS.forEach(id => { const el = $(id); if (el) fields[id] = el.value; });
+  const lineAdj = {};
+  ['roof','trees','bushes','win','arch','gar','tubs'].forEach(key => {
+    const o = $(key + 'Override'), a = $(key + 'DiscAmt'), p = $(key + 'DiscPct');
+    if (!o && !a && !p) return;
+    lineAdj[key] = { o: o ? o.value : '', a: a ? a.value : '', p: p ? p.value : '' };
+  });
+  const name = [fields.firstName, fields.lastName].filter(Boolean).join(' ').trim();
+  const title = name || fields.street || fields.phone || 'Untitled quote';
+  return {
+    id: 'q_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    savedAt: new Date().toISOString(),
+    title,
+    fields,
+    lineAdj,
+    treeLog: treeLog.slice(),
+    bushLog: bushLog.slice(),
+    copyText: $('copyText').textContent
+  };
+}
+function applySnapshot(q){
+  if (!q || !q.fields) return;
+  FIELD_IDS.forEach(id => {
+    if (!(id in q.fields) || !$(id)) return;
+    $(id).value = q.fields[id];
+  });
+  if (!($('state').value || '').trim()) $('state').value = 'TX';
+  treeLog = Array.isArray(q.treeLog) ? q.treeLog.slice() : [];
+  bushLog = Array.isArray(q.bushLog) ? q.bushLog.slice() : [];
+  renderTreeLog();
+  renderBushLog();
+  calc();
+  // restore line adj after calc rebuilds inputs
+  setTimeout(() => {
+    const adj = q.lineAdj || {};
+    Object.keys(adj).forEach(key => {
+      const s = adj[key] || {};
+      if ($(key + 'Override')) $(key + 'Override').value = s.o || '';
+      if ($(key + 'DiscAmt')) $(key + 'DiscAmt').value = s.a || '';
+      if ($(key + 'DiscPct')) $(key + 'DiscPct').value = s.p || '';
+    });
+    calc();
+  }, 0);
+  $('preview').innerHTML = '';
+  if ($('photos')) $('photos').value = '';
+}
+function clearForm(){
+  ['firstName','lastName','phone','street','subdivision','city','zip','notes'].forEach(id => { if ($(id)) $(id).value = ''; });
+  $('state').value = 'TX';
+  NUM_ZERO_IDS.forEach(id => { if ($(id)) $(id).value = '0'; });
+  CLEAR_EMPTY_IDS.forEach(id => { if ($(id)) $(id).value = ''; });
+  if ($('treeDiam')) $('treeDiam').value = '8';
+  if ($('treeHeight')) $('treeHeight').value = '10';
+  if ($('treeSpacing')) $('treeSpacing').value = '1.5';
+  if ($('bushPerim')) $('bushPerim').value = '6';
+  if ($('bushHeight')) $('bushHeight').value = '3';
+  if ($('bushSpacing')) $('bushSpacing').value = '4';
+  treeLog = [];
+  bushLog = [];
+  renderTreeLog();
+  renderBushLog();
+  $('preview').innerHTML = '';
+  if ($('photos')) $('photos').value = '';
+  if ($('aiStatus')) { $('aiStatus').textContent = ''; $('aiStatus').className = 'aiStatus'; }
+  // clear line adj after rebuild
+  calc();
+  setTimeout(() => {
+    ['roof','trees','bushes','win','arch','gar','tubs'].forEach(key => {
+      if ($(key + 'Override')) $(key + 'Override').value = '';
+      if ($(key + 'DiscAmt')) $(key + 'DiscAmt').value = '';
+      if ($(key + 'DiscPct')) $(key + 'DiscPct').value = '';
+    });
+    calc();
+  }, 0);
+  window.scrollTo(0, 0);
+}
+function formatWhen(iso){
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  } catch { return iso; }
+}
+function renderSavedList(){
+  const list = loadQuotes();
+  const box = $('savedList');
+  box.innerHTML = '';
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="meta">No saved quotes yet.</span>';
+    box.appendChild(li);
+    return;
+  }
+  list.forEach(q => {
+    const li = document.createElement('li');
+    li.innerHTML = '<div class="title"></div><div class="meta"></div><div class="rowBtns"></div>';
+    li.querySelector('.title').textContent = q.title || 'Untitled';
+    li.querySelector('.meta').textContent = formatWhen(q.savedAt);
+    const btns = li.querySelector('.rowBtns');
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'btn small';
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', () => {
+      applySnapshot(q);
+      window.scrollTo(0, 0);
+    });
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn secondary small';
+    delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => {
+      if (!confirm('Delete saved quote for ' + (q.title || 'this customer') + '?')) return;
+      persistQuotes(loadQuotes().filter(x => x.id !== q.id));
+      renderSavedList();
+    });
+    btns.appendChild(openBtn);
+    btns.appendChild(delBtn);
+    box.appendChild(li);
+  });
+}
+$('saveQuoteBtn').addEventListener('click', () => {
+  calc();
+  const snap = snapshotForm();
+  const list = loadQuotes().filter(q => q.id !== snap.id);
+  list.unshift(snap);
+  persistQuotes(list);
+  renderSavedList();
+  $('saveQuoteBtn').textContent = 'Saved';
+  setTimeout(()=>$('saveQuoteBtn').textContent='Save quote',1200);
+});
+$('clearFormBtn').addEventListener('click', () => {
+  if (!confirm('Clear this form? Unsaved changes will be lost.')) return;
+  clearForm();
+});
+
+renderSavedList();
 updateTreePreview();
 updateBushPreview();
 calc();
@@ -902,7 +1004,9 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      reg.update().catch(() => {});
+    }).catch(() => {});
   });
 }
 </script>

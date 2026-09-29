@@ -1,4 +1,4 @@
-const CACHE = 'plusp-estimate-v7';
+const CACHE = 'plusp-estimate-v8';
 const ASSETS = [
   './',
   './index.html',
@@ -19,6 +19,18 @@ self.addEventListener('activate', (e) => {
 });
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  // Always try network first for HTML so updates show up
+  if (url.pathname.endsWith('.html') || url.pathname.endsWith('/') || url.pathname.endsWith('/plusp-estimate')) {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((cached) => cached || fetch(e.request).then((res) => {
       const copy = res.clone();
