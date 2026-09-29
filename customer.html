@@ -44,7 +44,7 @@ textarea{min-height:72px;resize:vertical}
   <img class="logo" src="logo.png" width="64" height="64" alt="+P Holiday Lighting"/>
   <div class="titles">
     <h1>+P Holiday Lighting</h1>
-    <p class="sub">Request a Christmas light quote — fill this out and tap Submit. We’ll get it by email.</p>
+    <p class="sub">Request a Christmas light quote — fill this out and tap Submit. We’ll get it by email and save it with your photos.</p>
   </div>
 </div>
 
@@ -91,9 +91,9 @@ textarea{min-height:72px;resize:vertical}
     <input name="email" id="email" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
     <label>Notes (colors, peaks, gate code, etc.)</label>
     <textarea name="notes" id="notes" placeholder="Anything that helps with the quote…"></textarea>
-    <p class="hint">House photos can’t go through free email. After you submit, text them to <b>(214) 995-3002</b>. You can preview picks below first.</p>
+    <p class="hint">Add up to 4 house photos. They’re saved to a Drive folder named for your address.</p>
     <div class="file btn secondary" style="margin-top:0;margin-bottom:10px">
-      Preview house photos (optional)
+      Add house photos (optional)
       <input id="photos" type="file" accept="image/*" multiple />
     </div>
     <div class="photos" id="preview"></div>
@@ -104,27 +104,91 @@ textarea{min-height:72px;resize:vertical}
 
 <div class="card hidden" id="thanksCard">
   <p class="ok">Thanks — your quote request was sent to +P Holiday Lighting.</p>
-  <p class="hint" id="thanksExtra" style="margin:0 0 10px">We’ll follow up soon.</p>
-  <a class="btn hidden" id="textPhotosBtn" href="sms:+12149953002&body=Here%20are%20my%20house%20photos%20for%20the%20%2BP%20Holiday%20Lighting%20quote.">Text my house photos now</a>
+  <p class="hint" style="margin:0" id="thanksExtra">We’ll follow up soon. You can close this page.</p>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-const ENDPOINT = 'https://api.web3forms.com/submit';
-const ACCESS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
-let photoCount = 0;
+const PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbwY9cISGPDiBGH0gmGI3jbg1z5QaclqLTXjAG8BZiauAGVEtDzv40nWPDvCjISPENs/exec';
+const WEB3FORMS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
+let preparedPhotos = [];
 
-$('photos').addEventListener('change', () => {
-  const files = [...$('photos').files].slice(0, 6);
-  photoCount = files.length;
+function compressImage(file, maxSide, quality) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) { resolve(null); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, maxSide / Math.max(w, h));
+      w = Math.max(1, Math.round(w * scale));
+      h = Math.max(1, Math.round(h * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(null); return; }
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg',
+          mime: 'image/jpeg',
+          data: String(reader.result || '')
+        });
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+$('photos').addEventListener('change', async () => {
+  const picked = [...$('photos').files].slice(0, 4);
+  $('formErr').classList.add('hidden');
+  $('submitBtn').disabled = true;
+  $('submitBtn').textContent = 'Preparing photos…';
+  preparedPhotos = [];
   const box = $('preview');
   box.innerHTML = '';
-  files.forEach(f => {
+  for (const f of picked) {
+    let out = await compressImage(f, 1280, 0.7);
+    if (!out) continue;
+    if ((out.data || '').length > 900000) {
+      out = await compressImage(f, 900, 0.55);
+    }
+    if (!out) continue;
+    preparedPhotos.push(out);
     const img = document.createElement('img');
-    img.src = URL.createObjectURL(f);
+    img.src = out.data;
     box.appendChild(img);
-  });
+  }
+  $('photos').value = '';
+  $('submitBtn').disabled = false;
+  $('submitBtn').textContent = 'Submit quote request';
 });
+
+async function notifyEmail(fields) {
+  try {
+    await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        access_key: WEB3FORMS_KEY,
+        subject: '+P quote request — ' + fields.first_name + ' ' + fields.last_name,
+        from_name: fields.first_name + ' ' + fields.last_name,
+        name: fields.first_name + ' ' + fields.last_name,
+        phone: fields.phone,
+        street: fields.street,
+        city: fields.city,
+        state: fields.state,
+        zip: fields.zip,
+        message: 'New lead saved to +P Prospects / Drive. Photos: ' + preparedPhotos.length + '\nNotes: ' + (fields.notes || '(none)')
+      })
+    });
+  } catch (_) {}
+}
 
 $('quoteForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -141,58 +205,37 @@ $('quoteForm').addEventListener('submit', async (e) => {
   const btn = $('submitBtn');
   btn.disabled = true;
   btn.textContent = 'Sending…';
+  const fields = {
+    action: 'lead',
+    first_name: first,
+    last_name: last,
+    phone: phone,
+    street: street,
+    subdivision: $('subdivision').value.trim(),
+    city: $('city').value.trim(),
+    state: ($('state').value.trim() || 'TX').toUpperCase(),
+    zip: $('zip').value.trim(),
+    email: $('email').value.trim(),
+    notes: $('notes').value.trim(),
+    photos: preparedPhotos.map(p => ({ name: p.name, mime: p.mime, data: p.data }))
+  };
   try {
-    const subdivision = $('subdivision').value.trim();
-    const city = $('city').value.trim();
-    const state = ($('state').value.trim() || 'TX').toUpperCase();
-    const zip = $('zip').value.trim();
-    const notes = $('notes').value.trim();
-    const em = $('email').value.trim();
-    const message =
-      '+P Holiday Lighting quote request\n\n' +
-      'Name: ' + first + ' ' + last + '\n' +
-      'Phone: ' + phone + '\n' +
-      (em ? ('Email: ' + em + '\n') : '') +
-      'Street: ' + street + '\n' +
-      (subdivision ? ('Subdivision: ' + subdivision + '\n') : '') +
-      'City/State/ZIP: ' + [city, state].filter(Boolean).join(', ') + ' ' + zip + '\n' +
-      (notes ? ('Notes: ' + notes + '\n') : '') +
-      'Photos selected on form: ' + photoCount + ' (customer asked to text photos to 214-995-3002)\n';
-
-    const payload = {
-      access_key: ACCESS_KEY,
-      subject: '+P quote request — ' + first + ' ' + last,
-      from_name: first + ' ' + last,
-      name: first + ' ' + last,
-      phone: phone,
-      street: street,
-      subdivision: subdivision || '(none)',
-      city: city,
-      state: state,
-      zip: zip,
-      notes: notes || '(none)',
-      photo_count: String(photoCount),
-      photos_note: photoCount ? ('Customer selected ' + photoCount + ' photo(s); asked to text them to (214) 995-3002') : 'No photos selected',
-      message: message
-    };
-    if (em) payload.email = em;
-
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(PROSPECTS_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(fields),
+      redirect: 'follow'
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) {
-      throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch (_) {}
+    if (!res.ok || data.ok === false) {
+      throw new Error((data && data.error) || ('Send failed (' + res.status + ')'));
     }
-    if (photoCount > 0) {
-      $('thanksExtra').textContent = 'Please text your house photos to (214) 995-3002 so we can finish the estimate.';
-      $('textPhotosBtn').classList.remove('hidden');
-    } else {
-      $('thanksExtra').textContent = 'We’ll follow up soon. You can close this page.';
-      $('textPhotosBtn').classList.add('hidden');
-    }
+    notifyEmail(fields);
+    $('thanksExtra').textContent = preparedPhotos.length
+      ? ('Request saved with ' + preparedPhotos.length + ' photo(s). We’ll follow up soon.')
+      : 'We’ll follow up soon. You can close this page.';
     $('formCard').classList.add('hidden');
     $('thanksCard').classList.remove('hidden');
     window.scrollTo(0, 0);
