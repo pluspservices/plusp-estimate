@@ -132,16 +132,8 @@ textarea{min-height:64px;resize:vertical}
   <textarea id="notes" placeholder="Peaks, access, color preference…"></textarea>
   <span class="chip">First hang: roof $5 · glue $6 · balls $25</span>
   <span class="chip">Rehang: roof $2.50 · glue $3.50 · balls $25</span>
-  <div class="aiRow" style="margin-top:4px;margin-bottom:8px">
-    <button class="btn secondary small" type="button" id="copyCustomerLink" style="flex:1;margin:0">Copy customer form link</button>
-    <button class="btn toggle tiny" type="button" id="togglePasteCustomer">Paste info</button>
-  </div>
-  <div class="settingsPanel" id="pasteCustomerPanel">
-    <label>Paste customer summary or import code</label>
-    <textarea id="pasteCustomer" placeholder="Paste the message or PLUSP1:… code from the customer form"></textarea>
-    <button class="btn small" type="button" id="applyCustomerPaste">Fill customer fields</button>
-    <p class="hint">Usually customers Submit and you get an email. Paste here only if someone sends you an import code instead.</p>
-  </div>
+  <button class="btn secondary small" type="button" id="copyCustomerLink" style="margin:4px 0 10px">Copy quote-request link</button>
+  <p class="hint">Send this link in texts or Facebook posts — customers fill it out and Submit emails you.</p>
   <div class="file btn secondary" style="margin-top:0">
     Add house photos
     <input id="photos" type="file" accept="image/*" multiple />
@@ -882,26 +874,15 @@ function customerFormUrl(){
   try { return new URL('customer.html', location.href).href; }
   catch { return 'https://pluspservices.github.io/plusp-estimate/customer.html'; }
 }
-$('togglePasteCustomer').addEventListener('click', () => {
-  $('pasteCustomerPanel').classList.toggle('open');
-});
 $('copyCustomerLink').addEventListener('click', async () => {
   const url = customerFormUrl();
   try {
     await navigator.clipboard.writeText(url);
     $('copyCustomerLink').textContent = 'Link copied';
-    setTimeout(()=>$('copyCustomerLink').textContent='Copy customer form link',1400);
+    setTimeout(()=>$('copyCustomerLink').textContent='Copy quote-request link',1400);
   } catch {
     prompt('Copy this customer form link:', url);
   }
-});
-$('applyCustomerPaste').addEventListener('click', () => {
-  const data = parseCustomerPaste($('pasteCustomer').value);
-  if (!data) { alert('Could not read that paste. Use the customer form summary or PLUSP1 code.'); return; }
-  applyCustomerInfo(data);
-  $('pasteCustomer').value = '';
-  $('pasteCustomerPanel').classList.remove('open');
-  alert('Customer fields filled. Add photos and finish the estimate.');
 });
 (function loadFromHash(){
   const h = location.hash || '';
