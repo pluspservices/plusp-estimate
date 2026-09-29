@@ -344,7 +344,7 @@ textarea{min-height:64px;resize:vertical}
     <button class="btn secondary small" type="button" id="clearFormBtn">Clear form</button>
   </div>
   <div class="section">Saved quotes</div>
-  <p class="hint" style="margin-top:0">Stored on this phone only. Open one to keep editing.</p>
+  <p class="hint" style="margin-top:0" id="savedHint">Saved to +P Prospects (Drive) and on this phone. Open one to keep editing.</p>
   <ul class="savedList" id="savedList"></ul>
 </div>
 
@@ -573,6 +573,7 @@ function calc(){
   const contingencyOn = !!window._pluspContingencyOn;
   const contingency = contingencyOn ? Math.round(subtotal * 0.10 * 100) / 100 : 0;
   const jobTotal = Math.round((subtotal + contingency) * 100) / 100;
+  window._pluspLastTotals = { firstHang: jobTotal, rehang: r.final, subtotal: subtotal };
   $('totalCalc').textContent = money(subtotal);
   if ($('contingencyAmt')) $('contingencyAmt').textContent = money(contingency);
   if ($('contingencyRow')) $('contingencyRow').style.display = contingencyOn ? '' : 'none';
@@ -1174,7 +1175,12 @@ $('copyCustomerLink').addEventListener('click', async () => {
   }
 });
 
+const PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbwY9cISGPDiBGH0gmGI3jbg1z5QaclqLTXjAG8BZiauAGVEtDzv40nWPDvCjISPENs/exec';
 const QUOTE_STORE = 'plusp_saved_quotes_v1';
+let currentProspectId = '';
+let cloudProspects = [];
+let cloudListError = '';
+
 const FIELD_IDS = [
   'firstName','lastName','phone','street','subdivision','city','state','zip','notes',
   'roofFt','winFt','archFt','garFt','treeBalls','bushBalls','tubs',
@@ -1183,6 +1189,22 @@ const FIELD_IDS = [
 ];
 const NUM_ZERO_IDS = ['roofFt','winFt','archFt','garFt','treeBalls','bushBalls','tubs'];
 const CLEAR_EMPTY_IDS = ['firstOverride','firstDiscAmt','firstDiscPct','rehangOverride','rehangDiscAmt','rehangDiscPct'];
+
+async function apiPost(payload){
+  const res = await fetch(PROSPECTS_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+    redirect: 'follow'
+  });
+  const text = await res.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch (_) {}
+  if (!res.ok || data.ok === false) {
+    throw new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+  }
+  return data;
+}
 
 function loadQuotes(){
   try { return JSON.parse(localStorage.getItem(QUOTE_STORE) || '[]'); }
@@ -1202,8 +1224,10 @@ function snapshotForm(){
   });
   const name = [fields.firstName, fields.lastName].filter(Boolean).join(' ').trim();
   const title = name || fields.street || fields.phone || 'Untitled quote';
+  const totals = window._pluspLastTotals || { firstHang: 0, rehang: 0 };
   return {
-    id: 'q_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    id: currentProspectId || ('q_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    prospectId: currentProspectId || '',
     savedAt: new Date().toISOString(),
     title,
     fields,
@@ -1211,11 +1235,15 @@ function snapshotForm(){
     treeLog: treeLog.slice(),
     bushLog: bushLog.slice(),
     copyText: ($('copyText').value || $('copyText').textContent || ''),
-    contingencyOn: !!window._pluspContingencyOn
+    contingencyOn: !!window._pluspContingencyOn,
+    firstHangTotal: totals.firstHang || 0,
+    rehangTotal: totals.rehang || 0
   };
 }
 function applySnapshot(q){
   if (!q || !q.fields) return;
+  if (q.prospectId) currentProspectId = String(q.prospectId);
+  else if (q.id && String(q.id).length === 8 && q.id.indexOf('q_') !== 0) currentProspectId = String(q.id);
   FIELD_IDS.forEach(id => {
     if (!(id in q.fields) || !$(id)) return;
     $(id).value = q.fields[id];
@@ -1227,7 +1255,6 @@ function applySnapshot(q){
   renderTreeLog();
   renderBushLog();
   calc();
-  // restore line adj after calc rebuilds inputs
   setTimeout(() => {
     const adj = q.lineAdj || {};
     Object.keys(adj).forEach(key => {
@@ -1242,6 +1269,7 @@ function applySnapshot(q){
   if ($('photos')) $('photos').value = '';
 }
 function clearForm(){
+  currentProspectId = '';
   ['firstName','lastName','phone','street','subdivision','city','zip','notes'].forEach(id => { if ($(id)) $(id).value = ''; });
   $('state').value = 'TX';
   NUM_ZERO_IDS.forEach(id => { if ($(id)) $(id).value = '0'; });
@@ -1259,7 +1287,6 @@ function clearForm(){
   $('preview').innerHTML = '';
   if ($('photos')) $('photos').value = '';
   if ($('aiStatus')) { $('aiStatus').textContent = ''; $('aiStatus').className = 'aiStatus'; }
-  // clear line adj after rebuild
   calc();
   setTimeout(() => {
     ['roof','trees','bushes','win','arch','gar','tubs'].forEach(key => {
@@ -1274,62 +1301,208 @@ function clearForm(){
 function formatWhen(iso){
   try {
     const d = new Date(iso);
-    return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-  } catch { return iso; }
+    if (!isNaN(d.getTime())) return d.toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  } catch (_) {}
+  return iso || '';
+}
+function moneyPlain(n){
+  const x = Number(n);
+  if (!(x > 0)) return '';
+  return money(x);
+}
+function prospectToListItem(p){
+  const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim();
+  const title = name || p.street || p.phone || 'Untitled';
+  const hang = moneyPlain(p.first_hang_total);
+  const metaBits = [p.status || '', formatWhen(p.last_updated || p.date), hang].filter(Boolean);
+  return {
+    kind: 'cloud',
+    id: String(p.prospectId || ''),
+    prospectId: String(p.prospectId || ''),
+    title,
+    meta: metaBits.join(' · '),
+    raw: p
+  };
+}
+function localToListItem(q){
+  return {
+    kind: 'local',
+    id: q.id,
+    prospectId: q.prospectId || '',
+    title: (q.title || 'Untitled') + (q.prospectId ? '' : ' (phone only)'),
+    meta: formatWhen(q.savedAt),
+    raw: q
+  };
+}
+function mergedListItems(){
+  const items = [];
+  const seen = new Set();
+  cloudProspects.forEach(p => {
+    const id = String(p.prospectId || '');
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    items.push(prospectToListItem(p));
+  });
+  loadQuotes().forEach(q => {
+    const pid = q.prospectId || '';
+    if (pid && seen.has(pid)) return;
+    if (q.id && seen.has(q.id)) return;
+    items.push(localToListItem(q));
+  });
+  return items;
 }
 function renderSavedList(){
-  const list = loadQuotes();
   const box = $('savedList');
   box.innerHTML = '';
+  if (cloudListError) {
+    const err = document.createElement('li');
+    err.innerHTML = '<span class="meta"></span>';
+    err.querySelector('.meta').textContent = 'Cloud list unavailable — showing phone saves. ' + cloudListError;
+    box.appendChild(err);
+  }
+  const list = mergedListItems();
   if (!list.length) {
     const li = document.createElement('li');
     li.innerHTML = '<span class="meta">No saved quotes yet.</span>';
     box.appendChild(li);
     return;
   }
-  list.forEach(q => {
+  list.forEach(item => {
     const li = document.createElement('li');
     li.innerHTML = '<div class="title"></div><div class="meta"></div><div class="rowBtns"></div>';
-    li.querySelector('.title').textContent = q.title || 'Untitled';
-    li.querySelector('.meta').textContent = formatWhen(q.savedAt);
+    li.querySelector('.title').textContent = item.title;
+    li.querySelector('.meta').textContent = item.meta + (item.kind === 'cloud' ? ' · Drive' : '');
     const btns = li.querySelector('.rowBtns');
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.className = 'btn small';
     openBtn.textContent = 'Open';
-    openBtn.addEventListener('click', () => {
-      applySnapshot(q);
-      window.scrollTo(0, 0);
-    });
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'btn secondary small';
-    delBtn.textContent = 'Delete';
-    delBtn.addEventListener('click', () => {
-      if (!confirm('Delete saved quote for ' + (q.title || 'this customer') + '?')) return;
-      persistQuotes(loadQuotes().filter(x => x.id !== q.id));
-      renderSavedList();
-    });
+    openBtn.addEventListener('click', () => openSavedItem(item, openBtn));
     btns.appendChild(openBtn);
-    btns.appendChild(delBtn);
+    if (item.kind === 'local') {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn secondary small';
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', () => {
+        if (!confirm('Delete phone copy for ' + (item.title || 'this customer') + '?')) return;
+        persistQuotes(loadQuotes().filter(x => x.id !== item.id));
+        renderSavedList();
+      });
+      btns.appendChild(delBtn);
+    }
     box.appendChild(li);
   });
 }
-$('saveQuoteBtn').addEventListener('click', () => {
+async function openSavedItem(item, btn){
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Opening…';
+  try {
+    if (item.kind === 'cloud') {
+      const data = await apiPost({ action: 'getQuote', prospectId: item.prospectId });
+      const p = data.prospect || {};
+      currentProspectId = String(p.prospectId || item.prospectId || '');
+      if (p.quote_json && p.quote_json.fields) {
+        applySnapshot(Object.assign({}, p.quote_json, { prospectId: currentProspectId }));
+      } else {
+        // contact-only fallback until quote.json exists
+        applySnapshot({
+          prospectId: currentProspectId,
+          fields: {
+            firstName: p.first_name || '', lastName: p.last_name || '', phone: p.phone || '',
+            email: p.email || '', street: p.street || '', subdivision: p.subdivision || '',
+            city: p.city || '', state: p.state || 'TX', zip: p.zip || '', notes: p.notes || '',
+            roofFt:'0', winFt:'0', archFt:'0', garFt:'0', treeBalls:'0', bushBalls:'0', tubs:'0',
+            firstOverride:'', firstDiscAmt:'', firstDiscPct:'', rehangOverride:'', rehangDiscAmt:'', rehangDiscPct:'',
+            treeDiam:'8', treeHeight:'10', treeSpacing:'1.5', bushPerim:'6', bushHeight:'3', bushSpacing:'4'
+          },
+          lineAdj: {}, treeLog: [], bushLog: [], contingencyOn: true
+        });
+      }
+    } else {
+      applySnapshot(item.raw);
+    }
+    window.scrollTo(0, 0);
+  } catch (err) {
+    alert('Could not open quote: ' + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+async function refreshCloudList(){
+  cloudListError = '';
+  try {
+    const data = await apiPost({ action: 'listQuotes' });
+    cloudProspects = Array.isArray(data.prospects) ? data.prospects : [];
+  } catch (err) {
+    cloudProspects = [];
+    cloudListError = (err && err.message) ? err.message : String(err);
+  }
+  renderSavedList();
+}
+async function saveQuoteToCloudAndPhone(){
   calc();
   const snap = snapshotForm();
-  const list = loadQuotes().filter(q => q.id !== snap.id);
-  list.unshift(snap);
-  persistQuotes(list);
-  renderSavedList();
-  $('saveQuoteBtn').textContent = 'Saved';
-  setTimeout(()=>$('saveQuoteBtn').textContent='Save quote',1200);
-});
+  if (!(snap.fields.firstName || '').trim() || !(snap.fields.lastName || '').trim() || !(snap.fields.phone || '').trim() || !(snap.fields.street || '').trim()) {
+    alert('Add first name, last name, phone, and street before saving to Prospects.');
+    return;
+  }
+  const btn = $('saveQuoteBtn');
+  const prev = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const payload = {
+      action: 'saveQuote',
+      prospectId: currentProspectId || snap.prospectId || '',
+      status: 'Estimate saved',
+      first_name: snap.fields.firstName,
+      last_name: snap.fields.lastName,
+      phone: snap.fields.phone,
+      email: snap.fields.email || '',
+      street: snap.fields.street,
+      subdivision: snap.fields.subdivision || '',
+      city: snap.fields.city || '',
+      state: snap.fields.state || 'TX',
+      zip: snap.fields.zip || '',
+      notes: snap.fields.notes || '',
+      first_hang_total: snap.firstHangTotal || 0,
+      rehang_total: snap.rehangTotal || 0,
+      quote_json: snap
+    };
+    const data = await apiPost(payload);
+    if (data.prospectId) {
+      currentProspectId = String(data.prospectId);
+      snap.prospectId = currentProspectId;
+      snap.id = currentProspectId;
+    }
+    const list = loadQuotes().filter(q => q.id !== snap.id && q.prospectId !== currentProspectId);
+    list.unshift(snap);
+    persistQuotes(list);
+    btn.textContent = 'Saved to Drive';
+    await refreshCloudList();
+  } catch (err) {
+    // still keep phone copy
+    const list = loadQuotes().filter(q => q.id !== snap.id);
+    list.unshift(snap);
+    persistQuotes(list);
+    renderSavedList();
+    alert('Saved on this phone only. Drive save failed: ' + (err && err.message ? err.message : err));
+    btn.textContent = prev;
+    btn.disabled = false;
+    return;
+  }
+  setTimeout(() => { btn.textContent = 'Save quote'; btn.disabled = false; }, 1400);
+}
+$('saveQuoteBtn').addEventListener('click', () => { saveQuoteToCloudAndPhone(); });
 $('clearFormBtn').addEventListener('click', () => {
   if (!confirm('Clear this form? Unsaved changes will be lost.')) return;
   clearForm();
 });
 
+refreshCloudList();
 renderSavedList();
 updateTreePreview();
 updateBushPreview();
@@ -1338,7 +1511,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=29').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=30').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
