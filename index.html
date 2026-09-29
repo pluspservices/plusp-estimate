@@ -1129,12 +1129,22 @@ async function buildPdfEstimate(){
   let logo = null;
   try { logo = await loadLogoJpeg(220); } catch (e) { console.warn(e); }
   const safeName = name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'estimate';
-  downloadPdfBytes('+P-Estimate-' + safeName + '.pdf', makeSimplePdf(lines, logo));
+  const bytes = makeSimplePdf(lines, logo);
+  return { filename: '+P-Estimate-' + safeName + '.pdf', bytes: bytes, safeName: safeName };
+}
+function bytesToBase64(bytes){
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
 }
 $('pdfBtn').addEventListener('click', async () => {
   try {
     calc();
-    await buildPdfEstimate();
+    const pdf = await buildPdfEstimate();
+    downloadPdfBytes(pdf.filename, pdf.bytes);
   } catch (err) {
     alert('Could not build PDF: ' + (err && err.message ? err.message : err));
   }
@@ -1454,6 +1464,11 @@ async function saveQuoteToCloudAndPhone(){
   btn.disabled = true;
   btn.textContent = 'Saving…';
   try {
+    let pdf_base64 = '';
+    try {
+      const pdf = await buildPdfEstimate();
+      if (pdf && pdf.bytes) pdf_base64 = bytesToBase64(pdf.bytes);
+    } catch (e) { console.warn('PDF for Drive save failed', e); }
     const payload = {
       action: 'saveQuote',
       prospectId: currentProspectId || snap.prospectId || '',
@@ -1470,7 +1485,8 @@ async function saveQuoteToCloudAndPhone(){
       notes: snap.fields.notes || '',
       first_hang_total: snap.firstHangTotal || 0,
       rehang_total: snap.rehangTotal || 0,
-      quote_json: snap
+      quote_json: snap,
+      pdf_base64: pdf_base64
     };
     const data = await apiPost(payload);
     if (data.prospectId) {
@@ -1511,7 +1527,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=30').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=31').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });

@@ -121,19 +121,20 @@ function handleSaveQuote(data) {
 
   var snap = data.quote_json || null;
   if (snap) {
-    folder.createFile(Utilities.newBlob(JSON.stringify(snap, null, 2), 'application/json', 'quote.json'));
+    folder.createFile(Utilities.newBlob(JSON.stringify(snap, null, 2), 'application/json', '_reload-data.json'));
   }
   if (data.pdf_base64) {
     var pdfBytes = Utilities.base64Decode(String(data.pdf_base64).replace(/^data:application\/pdf;base64,/, ''));
-    folder.createFile(Utilities.newBlob(pdfBytes, 'application/pdf', 'estimate.pdf'));
+    folder.createFile(Utilities.newBlob(pdfBytes, 'application/pdf', 'Estimate.pdf'));
   }
+  var docUrl = writeEstimateDoc_(folder, data, snap, stamp);
 
   var status = clean_(data.status) || 'Estimate saved';
   var row = [
     id, stamp, status, first, last,
     phone, clean_(data.email), street, clean_(data.subdivision),
     clean_(data.city), clean_(data.state) || 'TX', clean_(data.zip), clean_(data.notes),
-    '', '', data.first_hang_total || '', data.rehang_total || '', folder.getUrl(), stamp, 'estimate app'
+    '', '', data.first_hang_total || '', data.rehang_total || '', folder.getUrl(), stamp, 'estimate app', docUrl || ''
   ];
 
   if (found > 0) {
@@ -149,7 +150,7 @@ function handleSaveQuote(data) {
     sheet.appendRow(row);
   }
 
-  return { ok: true, prospectId: id, folderUrl: folder.getUrl() };
+  return { ok: true, prospectId: id, folderUrl: folder.getUrl(), docUrl: docUrl || folder.getUrl() };
 }
 
 function rowToProspect_(r) {
@@ -173,7 +174,8 @@ function rowToProspect_(r) {
     rehang_total: r[16],
     estimate_folder_url: r[17],
     last_updated: r[18],
-    source: r[19]
+    source: r[19],
+    estimate_doc_url: r[20] || ''
   };
 }
 
@@ -194,7 +196,8 @@ function readQuoteJsonFromFolder_(folderUrl) {
     var idMatch = String(folderUrl).match(/[-\w]{25,}/);
     if (!idMatch) return null;
     var folder = DriveApp.getFolderById(idMatch[0]);
-    var files = folder.getFilesByName('quote.json');
+    var files = folder.getFilesByName('_reload-data.json');
+    if (!files.hasNext()) files = folder.getFilesByName('quote.json');
     if (!files.hasNext()) return null;
     var text = files.next().getBlob().getDataAsString();
     return JSON.parse(text);
@@ -214,6 +217,54 @@ function handleGetQuote(data) {
     }
   }
   throw new Error('Prospect not found');
+}
+
+
+function writeEstimateDoc_(folder, data, snap, stamp) {
+  var first = clean_(data.first_name);
+  var last = clean_(data.last_name);
+  var title = 'Estimate — ' + last + ', ' + first;
+  var doc = DocumentApp.create(title);
+  var body = doc.getBody();
+  body.clear();
+  body.appendParagraph('+P Holiday Lighting').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Christmas Light Installation Estimate').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+  body.appendParagraph(stamp || '');
+  body.appendParagraph('');
+  body.appendParagraph('Prepared for').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+  body.appendParagraph([first, last].filter(String).join(' '));
+  if (clean_(data.phone)) body.appendParagraph(clean_(data.phone));
+  if (clean_(data.email)) body.appendParagraph(clean_(data.email));
+  var addr = [clean_(data.street), [clean_(data.city), clean_(data.state) || 'TX'].filter(String).join(', '), clean_(data.zip)].filter(String).join(' ');
+  if (addr) body.appendParagraph(addr);
+  if (clean_(data.subdivision)) body.appendParagraph('Subdivision: ' + clean_(data.subdivision));
+  body.appendParagraph('');
+
+  var copy = (snap && snap.copyText) ? String(snap.copyText) : '';
+  if (copy) {
+    body.appendParagraph('Estimate details').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+    var lines = copy.split(/\n/);
+    for (var i = 0; i < lines.length; i++) {
+      body.appendParagraph(lines[i]);
+    }
+  } else {
+    body.appendParagraph('First hang total: ' + (data.first_hang_total || ''));
+    body.appendParagraph('Suggested rehang total: ' + (data.rehang_total || ''));
+  }
+  if (clean_(data.notes)) {
+    body.appendParagraph('');
+    body.appendParagraph('Notes').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+    body.appendParagraph(clean_(data.notes));
+  }
+  body.appendParagraph('');
+  body.appendParagraph('Text or call: (214) 995-3002');
+  body.appendParagraph('Email (secondary): pluspservices@gmail.com');
+  doc.saveAndClose();
+
+  var file = DriveApp.getFileById(doc.getId());
+  folder.addFile(file);
+  try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+  return doc.getUrl();
 }
 
 function clean_(v) { return String(v == null ? '' : v).trim(); }
