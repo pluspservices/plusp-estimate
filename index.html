@@ -1123,7 +1123,8 @@ async function buildPdfEstimate(){
   lines.push('');
   lines.push('Thank you for choosing +P Holiday Lighting.');
   lines.push('Estimate may be adjusted after on-site review.');
-  lines.push('Questions: pluspservices@gmail.com');
+  lines.push('Text or call: (214) 995-3002');
+  lines.push('Email (secondary): pluspservices@gmail.com');
 
   let logo = null;
   try { logo = await loadLogoJpeg(220); } catch (e) { console.warn(e); }
@@ -1338,7 +1339,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=20').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=21').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
