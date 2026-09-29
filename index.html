@@ -326,6 +326,10 @@ textarea{min-height:64px;resize:vertical}
     <button class="btn secondary small" type="button" id="saveQuoteBtn">Save quote</button>
     <button class="btn secondary small" type="button" id="clearFormBtn">Clear form</button>
   </div>
+  <div class="section">Materials for this job</div>
+  <p class="hint" style="margin-top:0">From your quote: 1 C9 bulb + 1 clip per C9 ft; LED 5mm balled minis by the ball. Packs round up.</p>
+  <div class="itemized" id="materialsText">No C9 or balls yet.</div>
+  <button class="btn secondary small" type="button" id="copyMaterialsBtn">Copy materials list</button>
   <div class="section">Saved quotes</div>
   <p class="hint" style="margin-top:0">Stored on this phone only. Open one to keep editing.</p>
   <ul class="savedList" id="savedList"></ul>
@@ -644,6 +648,32 @@ function calc(){
   if (notes) text += '\nNotes: ' + notes;
   if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (phone ? phone+'\n' : '') + (addr ? addr+'\n' : '') + (subdivision ? 'Subdivision: '+subdivision+'\n' : '') + 'No line items yet.';
   $('copyText').textContent = text;
+
+  // Materials: C9 ft = roof + glued; 1 bulb + 1 clip per ft; balls for trees/bushes
+  const c9Ft = Math.round((roof + win + arch + gar) * 100) / 100;
+  const balls = trees + bushes;
+  const bulbPacks = c9Ft > 0 ? Math.ceil(c9Ft / 25) : 0;
+  const clipPacks = c9Ft > 0 ? Math.ceil(c9Ft / 100) : 0;
+  const mat = [];
+  if (name) mat.push(name);
+  if (addr) mat.push(addr);
+  if (c9Ft > 0 || balls > 0) {
+    mat.push('Materials for this job:');
+    if (c9Ft > 0) {
+      mat.push('• C9 run: ' + c9Ft + ' ft (roof ' + roof + ' · windows ' + win + ' · arch ' + arch + ' · garage ' + gar + ')');
+      mat.push('• C9 bulbs: ' + Math.round(c9Ft) + ' bulbs → ' + bulbPacks + ' pack' + (bulbPacks === 1 ? '' : 's') + ' of 25');
+      mat.push('• Clips: ' + Math.round(c9Ft) + ' clips → ' + clipPacks + ' pack' + (clipPacks === 1 ? '' : 's') + ' of 100');
+      mat.push('• 12" socketed line: ~' + Math.round(c9Ft) + ' ft (from 1000-ft spool; use magnetic 500-ft spool if metal)');
+    }
+    if (balls > 0) {
+      mat.push('• LED 5mm balled minis: ' + balls + ' ball' + (balls === 1 ? '' : 's') + ' (trees ' + trees + ' · bushes ' + bushes + ')');
+    }
+    mat.push('• Bare wire (250-ft spools): add only if this job needs it');
+  } else {
+    mat.push('No C9 or balls yet — enter footage/balls above.');
+  }
+  const materialsText = mat.join('\n');
+  if ($('materialsText')) $('materialsText').textContent = materialsText;
 }
 
 ['firstName','lastName','phone','street','subdivision','city','state','zip','notes','roofFt','treeBalls','bushBalls','winFt','archFt','garFt','tubs',
@@ -852,6 +882,14 @@ $('copyBtn').addEventListener('click', async ()=>{
     $('copyBtn').textContent = 'Copied';
     setTimeout(()=>$('copyBtn').textContent='Copy estimate text',1200);
   } catch { prompt('Copy this estimate:', t); }
+});
+$('copyMaterialsBtn').addEventListener('click', async ()=>{
+  const t = $('materialsText').textContent;
+  try {
+    await navigator.clipboard.writeText(t);
+    $('copyMaterialsBtn').textContent = 'Copied';
+    setTimeout(()=>$('copyMaterialsBtn').textContent='Copy materials list',1200);
+  } catch { prompt('Copy materials:', t); }
 });
 
 
