@@ -104,6 +104,8 @@ textarea{min-height:64px;resize:vertical}
   </div>
   <label>Street address</label>
   <input id="street" placeholder="123 Main St" />
+  <label>Subdivision</label>
+  <input id="subdivision" placeholder="Optional" />
   <div class="row4">
     <div>
       <label>City</label>
@@ -541,6 +543,7 @@ function calc(){
   const firstName = $('firstName').value.trim();
   const lastName = $('lastName').value.trim();
   const street = $('street').value.trim();
+  const subdivision = $('subdivision').value.trim();
   const city = $('city').value.trim();
   const state = ($('state').value.trim() || 'TX').toUpperCase();
   const zip = $('zip').value.trim();
@@ -551,6 +554,7 @@ function calc(){
   let text = '';
   if (name) text += name + '\n';
   if (addr) text += addr + '\n';
+  if (subdivision) text += 'Subdivision: ' + subdivision + '\n';
   if (first.length) {
     text += 'First hang: ' + first.map(p=>{
       let s = p.speak;
@@ -583,11 +587,11 @@ function calc(){
   text += 'Takedown included.\n';
   text += 'Maintenance included.';
   if (notes) text += '\nNotes: ' + notes;
-  if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (addr ? addr+'\n' : '') + 'No line items yet.';
+  if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (addr ? addr+'\n' : '') + (subdivision ? 'Subdivision: '+subdivision+'\n' : '') + 'No line items yet.';
   $('copyText').textContent = text;
 }
 
-['firstName','lastName','street','city','state','zip','notes','roofFt','treeBalls','bushBalls','winFt','archFt','garFt','tubs',
+['firstName','lastName','street','subdivision','city','state','zip','notes','roofFt','treeBalls','bushBalls','winFt','archFt','garFt','tubs',
  'firstOverride','firstDiscAmt','firstDiscPct','rehangOverride','rehangDiscAmt','rehangDiscPct'].forEach(id=>{
   $(id).addEventListener('input', calc);
 });
