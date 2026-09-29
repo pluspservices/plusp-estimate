@@ -21,157 +21,143 @@ textarea{min-height:72px;resize:vertical}
 .row3{display:grid;grid-template-columns:2fr 0.7fr 1fr;gap:8px}
 @media (max-width:480px){.row3{grid-template-columns:1fr 1fr}}
 .btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;font-size:1rem;font-weight:650;background:var(--accent);color:#1a1200;margin-top:4px}
+.btn:disabled{opacity:.55}
 .btn.secondary{background:#243044;color:var(--text);border:1px solid var(--line);margin-top:8px}
-.btn.small{padding:12px;font-size:.95rem}
 .hint{font-size:.78rem;color:var(--muted);margin:0 0 10px;line-height:1.4}
-.ok{color:var(--ok);font-size:.9rem;margin:0 0 10px}
-.itemized{white-space:pre-wrap;background:#0f1419;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:.88rem;line-height:1.45;word-break:break-word}
+.ok{color:var(--ok);font-size:.95rem;margin:0 0 8px;line-height:1.4}
+.err{color:var(--warn);font-size:.9rem;margin:8px 0 0;line-height:1.4}
 .hidden{display:none}
 .photos{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:8px}
 .photos img{height:72px;width:72px;object-fit:cover;border-radius:10px;border:1px solid var(--line);flex-shrink:0}
 .file{position:relative;overflow:hidden;display:block;text-align:center}
 .file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.hp{position:absolute;left:-9999px;opacity:0;height:0;width:0;overflow:hidden}
 </style>
 </head>
 <body>
 <h1>+P Holiday Lighting</h1>
-<p class="sub">Request a Christmas light quote — fill this out and send it back to us.</p>
+<p class="sub">Request a Christmas light quote — fill this out and tap Submit. We’ll get it by email.</p>
 
 <div class="card" id="formCard">
-  <div class="row">
-    <div>
-      <label>First name</label>
-      <input id="firstName" placeholder="First" autocomplete="given-name" />
+  <form id="quoteForm" novalidate>
+    <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+    <div class="row">
+      <div>
+        <label>First name</label>
+        <input name="first_name" id="firstName" placeholder="First" autocomplete="given-name" required />
+      </div>
+      <div>
+        <label>Last name</label>
+        <input name="last_name" id="lastName" placeholder="Last" autocomplete="family-name" required />
+      </div>
     </div>
-    <div>
-      <label>Last name</label>
-      <input id="lastName" placeholder="Last" autocomplete="family-name" />
+    <label>Phone</label>
+    <input name="phone" id="phone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="tel" required />
+    <div class="row">
+      <div>
+        <label>Street address</label>
+        <input name="street" id="street" placeholder="123 Main St" autocomplete="street-address" required />
+      </div>
+      <div>
+        <label>Subdivision</label>
+        <input name="subdivision" id="subdivision" placeholder="Optional" />
+      </div>
     </div>
-  </div>
-  <label>Phone</label>
-  <input id="phone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="tel" />
-  <div class="row">
-    <div>
-      <label>Street address</label>
-      <input id="street" placeholder="123 Main St" autocomplete="street-address" />
+    <div class="row3">
+      <div>
+        <label>City</label>
+        <input name="city" id="city" placeholder="City" autocomplete="address-level2" required />
+      </div>
+      <div>
+        <label>State</label>
+        <input name="state" id="state" value="TX" maxlength="2" autocomplete="address-level1" />
+      </div>
+      <div>
+        <label>ZIP</label>
+        <input name="zip" id="zip" inputmode="numeric" placeholder="75000" autocomplete="postal-code" required />
+      </div>
     </div>
-    <div>
-      <label>Subdivision</label>
-      <input id="subdivision" placeholder="Optional" />
+    <label>Your email (optional — so we can reply)</label>
+    <input name="email" id="email" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
+    <label>Notes (colors, peaks, gate code, etc.)</label>
+    <textarea name="notes" id="notes" placeholder="Anything that helps with the quote…"></textarea>
+    <p class="hint">Optional: add house photos. They go with your submission.</p>
+    <div class="file btn secondary" style="margin-top:0;margin-bottom:10px">
+      Add house photos (optional)
+      <input id="photos" name="attachment" type="file" accept="image/*" multiple />
     </div>
-  </div>
-  <div class="row3">
-    <div>
-      <label>City</label>
-      <input id="city" placeholder="City" autocomplete="address-level2" />
-    </div>
-    <div>
-      <label>State</label>
-      <input id="state" value="TX" maxlength="2" autocomplete="address-level1" />
-    </div>
-    <div>
-      <label>ZIP</label>
-      <input id="zip" inputmode="numeric" placeholder="75000" autocomplete="postal-code" />
-    </div>
-  </div>
-  <label>Notes (colors, peaks, gate code, etc.)</label>
-  <textarea id="notes" placeholder="Anything that helps with the quote…"></textarea>
-  <p class="hint">Optional: attach house photos below, then text or email those photos to us along with the message on the next screen.</p>
-  <div class="file btn secondary" style="margin-top:0">
-    Add house photos (optional)
-    <input id="photos" type="file" accept="image/*" multiple />
-  </div>
-  <div class="photos" id="preview"></div>
-  <button class="btn" type="button" id="makeSummary">Create message to send</button>
+    <div class="photos" id="preview"></div>
+    <button class="btn" type="submit" id="submitBtn">Submit quote request</button>
+    <p class="err hidden" id="formErr"></p>
+  </form>
 </div>
 
-<div class="card hidden" id="resultCard">
-  <p class="ok">Ready — copy the message below and text or email it to +P. Attach your house photos in the same message if you added any.</p>
-  <label>Your message</label>
-  <div class="itemized" id="summaryOut"></div>
-  <button class="btn" type="button" id="copySummary">Copy message</button>
-  <button class="btn secondary small" type="button" id="copyImportLink">Copy open-in-app link (for +P)</button>
-  <p class="hint" id="linkHint">+P can open that link to fill your info into the estimate app automatically.</p>
-  <button class="btn secondary small" type="button" id="editAgain">Edit info</button>
+<div class="card hidden" id="thanksCard">
+  <p class="ok">Thanks — your quote request was sent to +P Holiday Lighting.</p>
+  <p class="hint" style="margin:0">We’ll follow up soon. You can close this page.</p>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-function b64urlEncode(str){
-  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
-function gather(){
-  return {
-    firstName: $('firstName').value.trim(),
-    lastName: $('lastName').value.trim(),
-    phone: $('phone').value.trim(),
-    street: $('street').value.trim(),
-    subdivision: $('subdivision').value.trim(),
-    city: $('city').value.trim(),
-    state: ($('state').value.trim() || 'TX').toUpperCase(),
-    zip: $('zip').value.trim(),
-    notes: $('notes').value.trim()
-  };
-}
-function humanSummary(d){
-  const lines = ['+P quote request'];
-  if (d.firstName || d.lastName) lines.push('First name: ' + (d.firstName||''), 'Last name: ' + (d.lastName||''));
-  if (d.phone) lines.push('Phone: ' + d.phone);
-  if (d.street) lines.push('Street: ' + d.street);
-  if (d.subdivision) lines.push('Subdivision: ' + d.subdivision);
-  if (d.city) lines.push('City: ' + d.city);
-  if (d.state) lines.push('State: ' + d.state);
-  if (d.zip) lines.push('ZIP: ' + d.zip);
-  if (d.notes) lines.push('Notes: ' + d.notes);
-  lines.push('', 'Import code (for +P Estimate → Paste info):', 'PLUSP1:' + b64urlEncode(JSON.stringify(d)));
-  return lines.join('\n');
-}
-function importUrl(d){
-  const base = new URL('index.html', location.href).href.split('#')[0];
-  return base + '#c=' + b64urlEncode(JSON.stringify(d));
-}
-let lastData = null;
+const ENDPOINT = 'https://formsubmit.co/ajax/pluspservices@gmail.com';
+
 $('photos').addEventListener('change', () => {
   const box = $('preview');
   box.innerHTML = '';
-  [...$('photos').files].slice(0,8).forEach(f => {
+  [...$('photos').files].slice(0, 6).forEach(f => {
     const img = document.createElement('img');
     img.src = URL.createObjectURL(f);
     box.appendChild(img);
   });
 });
-$('makeSummary').addEventListener('click', () => {
-  const d = gather();
-  if (!d.firstName && !d.lastName && !d.phone && !d.street) {
-    alert('Add at least a name, phone, or address.');
+
+$('quoteForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('formErr').classList.add('hidden');
+  const first = $('firstName').value.trim();
+  const last = $('lastName').value.trim();
+  const phone = $('phone').value.trim();
+  const street = $('street').value.trim();
+  if (!first || !last || !phone || !street) {
+    $('formErr').textContent = 'Please fill first name, last name, phone, and street address.';
+    $('formErr').classList.remove('hidden');
     return;
   }
-  lastData = d;
-  $('summaryOut').textContent = humanSummary(d);
-  $('formCard').classList.add('hidden');
-  $('resultCard').classList.remove('hidden');
-  window.scrollTo(0,0);
-});
-$('editAgain').addEventListener('click', () => {
-  $('resultCard').classList.add('hidden');
-  $('formCard').classList.remove('hidden');
-});
-$('copySummary').addEventListener('click', async () => {
-  const t = $('summaryOut').textContent;
+  const btn = $('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
   try {
-    await navigator.clipboard.writeText(t);
-    $('copySummary').textContent = 'Copied';
-    setTimeout(()=>$('copySummary').textContent='Copy message',1200);
-  } catch { prompt('Copy this message:', t); }
-});
-$('copyImportLink').addEventListener('click', async () => {
-  if (!lastData) return;
-  const url = importUrl(lastData);
-  try {
-    await navigator.clipboard.writeText(url);
-    $('copyImportLink').textContent = 'Link copied';
-    setTimeout(()=>$('copyImportLink').textContent='Copy open-in-app link (for +P)',1400);
-  } catch { prompt('Copy this link:', url); }
+    const fd = new FormData($('quoteForm'));
+    fd.set('_subject', '+P quote request — ' + first + ' ' + last);
+    fd.set('_template', 'table');
+    fd.set('_captcha', 'false');
+    fd.set('_honey', fd.get('_honey') || '');
+    // FormSubmit uses replyto from email field when named email
+    if ($('email').value.trim()) fd.set('_replyto', $('email').value.trim());
+    // Limit attachments size roughly: FormSubmit free tier is limited
+    const files = [...$('photos').files];
+    fd.delete('attachment');
+    files.slice(0, 4).forEach((f, i) => {
+      if (f.size <= 5 * 1024 * 1024) fd.append('attachment' + (i ? i : ''), f);
+    });
+    const res = await fetch(ENDPOINT, {
+      method: 'POST',
+      body: fd,
+      headers: { Accept: 'application/json' }
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
+    }
+    $('formCard').classList.add('hidden');
+    $('thanksCard').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  } catch (err) {
+    $('formErr').textContent = 'Could not send right now. Try again in a minute, or text us instead. (' + (err && err.message ? err.message : err) + ')';
+    $('formErr').classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Submit quote request';
+  }
 });
 </script>
 </body>
