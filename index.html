@@ -11,7 +11,6 @@
 <link rel="apple-touch-icon" href="icon-180.png"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <title>+P Photo Estimate</title>
-<script src="jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#0f1419;--card:#1a2332;--text:#f2f5f8;--muted:#9aa8b8;--accent:#e8b84a;--ok:#3dd68c;--line:#2a3a4f;--warn:#ff8f6b}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -878,20 +877,89 @@ $('estimatePhotos').addEventListener('click', async ()=>{
   }
 });
 
+
 function pdfMoney(n){
   return '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
-function buildPdfEstimate(){
-  if (!window.jspdf || !window.jspdf.jsPDF) {
-    alert('PDF library still loading — try again in a second.');
-    return;
-  }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
-  const W = doc.internal.pageSize.getWidth();
+function pdfEscape(s){
+  return String(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+}
+/** Minimal text-only PDF (no external library). */
+function makeSimplePdf(lines){
+  const pageW = 612, pageH = 792; // letter
   const margin = 48;
-  let y = 48;
-
+  const fontSize = 11;
+  const leading = 15;
+  const maxY = pageH - margin;
+  let y = pageH - margin;
+  const content = [];
+  content.push('BT');
+  content.push('/F1 ' + fontSize + ' Tf');
+  content.push(margin + ' ' + y + ' Td');
+  let first = true;
+  for (const raw of lines) {
+    const line = String(raw == null ? '' : raw);
+    // wrap long lines roughly
+    const maxChars = 90;
+    const chunks = [];
+    if (!line.length) chunks.push('');
+    else {
+      let rest = line;
+      while (rest.length > maxChars) {
+        let cut = rest.lastIndexOf(' ', maxChars);
+        if (cut < 40) cut = maxChars;
+        chunks.push(rest.slice(0, cut));
+        rest = rest.slice(cut).replace(/^\s+/, '');
+      }
+      chunks.push(rest);
+    }
+    for (const chunk of chunks) {
+      if (y < margin + leading) {
+        // new page
+        content.push('ET');
+        // We'll only support one page stream rebuild — flush multi-page properly below
+      }
+      if (!first) content.push('0 -' + leading + ' Td');
+      content.push('(' + pdfEscape(chunk) + ') Tj');
+      first = false;
+      y -= leading;
+    }
+  }
+  content.push('ET');
+  const stream = content.join('\n');
+  const objs = [];
+  objs.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+  objs.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+  objs.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n');
+  objs.push('4 0 obj\n<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream\nendobj\n');
+  objs.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n');
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const o of objs) {
+    offsets.push(pdf.length);
+    pdf += o;
+  }
+  const xref = pdf.length;
+  pdf += 'xref\n0 ' + (objs.length + 1) + '\n';
+  pdf += '0000000000 65535 f \n';
+  for (let i = 1; i < offsets.length; i++) {
+    pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  }
+  pdf += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  return pdf;
+}
+function downloadTextPdf(filename, lines){
+  const pdf = makeSimplePdf(lines);
+  const blob = new Blob([pdf], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+}
+function buildPdfEstimate(){
   const firstName = $('firstName').value.trim();
   const lastName = $('lastName').value.trim();
   const phone = $('phone').value.trim();
@@ -902,46 +970,8 @@ function buildPdfEstimate(){
   const zip = $('zip').value.trim();
   const notes = $('notes').value.trim();
   const name = [firstName, lastName].filter(Boolean).join(' ') || 'Customer';
-  const addr1 = street || '';
-  const addr2 = [[city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(' ');
-
-  // Header bar
-  doc.setFillColor(15, 20, 25);
-  doc.rect(0, 0, W, 72, 'F');
-  doc.setTextColor(232, 184, 74);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('+P Holiday Lighting', margin, 34);
-  doc.setTextColor(242, 245, 248);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  doc.text('Christmas Light Installation Estimate', margin, 54);
-  doc.setFontSize(9);
-  doc.setTextColor(154, 168, 184);
   const today = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-  doc.text(today, W - margin, 54, { align: 'right' });
 
-  y = 100;
-  doc.setTextColor(15, 20, 25);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('Prepared for', margin, y);
-  y += 18;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  doc.text(name, margin, y); y += 15;
-  if (phone) { doc.text(phone, margin, y); y += 15; }
-  if (addr1) { doc.text(addr1, margin, y); y += 15; }
-  if (addr2) { doc.text(addr2, margin, y); y += 15; }
-  if (subdivision) { doc.text('Subdivision: ' + subdivision, margin, y); y += 15; }
-
-  y += 10;
-  doc.setDrawColor(232, 184, 74);
-  doc.setLineWidth(1.5);
-  doc.line(margin, y, W - margin, y);
-  y += 24;
-
-  // Pull live numbers same as calc
   const roof = +$('roofFt').value || 0;
   const trees = +$('treeBalls').value || 0;
   const bushes = +$('bushBalls').value || 0;
@@ -951,7 +981,6 @@ function buildPdfEstimate(){
   const tubs = +$('tubs').value || 0;
   const FIRST = { roof:5, ball:25, glue:6, tub:50 };
   const REHANG = { roof:2.5, ball:25, glue:3.5 };
-
   function lineFinal(key, base) {
     const oEl = $(key+'Override');
     const aEl = $(key+'DiscAmt');
@@ -961,88 +990,28 @@ function buildPdfEstimate(){
     const dP = pEl ? pEl.value.trim() : '';
     return finalize(base, o, dA, dP);
   }
-
   const items = [];
-  if (roof > 0) items.push({key:'roof', label:'Roofline', detail: roof + ' ft × $5', amt: roof*FIRST.roof});
-  if (trees > 0) items.push({key:'trees', label:'Trees', detail: trees + ' balls × $25', amt: trees*FIRST.ball});
-  if (bushes > 0) items.push({key:'bushes', label:'Bushes', detail: bushes + ' balls × $25', amt: bushes*FIRST.ball});
-  if (win > 0) items.push({key:'win', label:'Front windows', detail: win + ' ft × $6', amt: win*FIRST.glue});
-  if (arch > 0) items.push({key:'arch', label:'Archways', detail: arch + ' ft × $6', amt: arch*FIRST.glue});
-  if (gar > 0) items.push({key:'gar', label:'Garages', detail: gar + ' ft × $6', amt: gar*FIRST.glue});
-  if (tubs > 0) items.push({key:'tubs', label:'Storage (optional)', detail: tubs + ' tubs × $50', amt: tubs*FIRST.tub});
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('First hang — this season', margin, y);
-  y += 16;
+  if (roof > 0) items.push({key:'roof', label:'Roofline', detail: roof + ' ft x $5', amt: roof*FIRST.roof});
+  if (trees > 0) items.push({key:'trees', label:'Trees', detail: trees + ' balls x $25', amt: trees*FIRST.ball});
+  if (bushes > 0) items.push({key:'bushes', label:'Bushes', detail: bushes + ' balls x $25', amt: bushes*FIRST.ball});
+  if (win > 0) items.push({key:'win', label:'Front windows', detail: win + ' ft x $6', amt: win*FIRST.glue});
+  if (arch > 0) items.push({key:'arch', label:'Archways', detail: arch + ' ft x $6', amt: arch*FIRST.glue});
+  if (gar > 0) items.push({key:'gar', label:'Garages', detail: gar + ' ft x $6', amt: gar*FIRST.glue});
+  if (tubs > 0) items.push({key:'tubs', label:'Storage (optional)', detail: tubs + ' tubs x $50', amt: tubs*FIRST.tub});
 
   let firstCalc = 0;
-  if (!items.length) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(100,100,100);
-    doc.text('No line items entered yet.', margin, y);
-    y += 18;
-    doc.setTextColor(15, 20, 25);
-  } else {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(100, 110, 120);
-    doc.text('ITEM', margin, y);
-    doc.text('DETAIL', margin + 150, y);
-    doc.text('AMOUNT', W - margin, y, { align: 'right' });
-    y += 8;
-    doc.setDrawColor(220, 220, 220);
-    doc.setLineWidth(0.5);
-    doc.line(margin, y, W - margin, y);
-    y += 14;
-    doc.setTextColor(15, 20, 25);
-    items.forEach(it => {
-      const lf = lineFinal(it.key, it.amt);
-      firstCalc += lf.final;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.text(it.label, margin, y);
-      doc.setFontSize(9);
-      doc.setTextColor(90, 90, 90);
-      doc.text(it.detail, margin + 150, y);
-      doc.setTextColor(15, 20, 25);
-      doc.setFontSize(10);
-      doc.text(pdfMoney(lf.final), W - margin, y, { align: 'right' });
-      y += 16;
-      if (y > 700) { doc.addPage(); y = 48; }
-    });
-  }
-
+  const lineRows = [];
+  items.forEach(it => {
+    const lf = lineFinal(it.key, it.amt);
+    firstCalc += lf.final;
+    lineRows.push(it.label + '  (' + it.detail + ')  ' + pdfMoney(lf.final));
+  });
   const f = finalize(firstCalc, $('firstOverride').value.trim(), $('firstDiscAmt').value.trim(), $('firstDiscPct').value.trim());
   const contingencyOn = !!window._pluspContingencyOn;
   const subtotal = f.final;
   const contingency = contingencyOn ? Math.round(subtotal * 0.10 * 100) / 100 : 0;
   const jobTotal = Math.round((subtotal + contingency) * 100) / 100;
 
-  y += 6;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, y, W - margin, y);
-  y += 18;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  if (contingencyOn) {
-    doc.text('Subtotal', margin, y);
-    doc.text(pdfMoney(subtotal), W - margin, y, { align: 'right' });
-    y += 15;
-    doc.text('Contingency (10%)', margin, y);
-    doc.text(pdfMoney(contingency), W - margin, y, { align: 'right' });
-    y += 18;
-  }
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(15, 20, 25);
-  doc.text('First hang total', margin, y);
-  doc.setTextColor(180, 140, 40);
-  doc.text(pdfMoney(jobTotal), W - margin, y, { align: 'right' });
-  y += 28;
-
-  // Rehang
   let rehangCalc = 0;
   if (roof > 0) rehangCalc += roof * REHANG.roof;
   if (trees > 0) rehangCalc += trees * REHANG.ball;
@@ -1052,76 +1021,55 @@ function buildPdfEstimate(){
   if (gar > 0) rehangCalc += gar * REHANG.glue;
   const r = finalize(rehangCalc, $('rehangOverride').value.trim(), $('rehangDiscAmt').value.trim(), $('rehangDiscPct').value.trim());
 
-  doc.setTextColor(15, 20, 25);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('Suggested rehang — next season', margin, y);
-  y += 16;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text('Final price only (not itemized)', margin, y);
-  doc.setFont('helvetica', 'bold');
-  doc.text(pdfMoney(r.final), W - margin, y, { align: 'right' });
-  y += 26;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(40, 140, 90);
-  doc.text('✓  Takedown included', margin, y); y += 14;
-  doc.text('✓  Maintenance included', margin, y); y += 22;
-
-  if (notes) {
-    doc.setTextColor(15, 20, 25);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Notes', margin, y); y += 14;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const lines = doc.splitTextToSize(notes, W - margin * 2);
-    doc.text(lines, margin, y);
-    y += lines.length * 13 + 12;
+  const lines = [];
+  lines.push('+P Holiday Lighting');
+  lines.push('Christmas Light Installation Estimate');
+  lines.push(today);
+  lines.push('');
+  lines.push('Prepared for');
+  lines.push(name);
+  if (phone) lines.push(phone);
+  if (street) lines.push(street);
+  const addr2 = [[city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(' ');
+  if (addr2) lines.push(addr2);
+  if (subdivision) lines.push('Subdivision: ' + subdivision);
+  lines.push('');
+  lines.push('First hang - this season');
+  lines.push('----------------------------------------');
+  if (!lineRows.length) lines.push('No line items entered yet.');
+  else lineRows.forEach(row => lines.push(row));
+  lines.push('----------------------------------------');
+  if (contingencyOn) {
+    lines.push('Subtotal: ' + pdfMoney(subtotal));
+    lines.push('Contingency (10%): ' + pdfMoney(contingency));
   }
-
-  y += 8;
-  if (y > 720) { doc.addPage(); y = 48; }
-  doc.setDrawColor(232, 184, 74);
-  doc.setLineWidth(1);
-  doc.line(margin, y, W - margin, y);
-  y += 16;
-  doc.setTextColor(100, 110, 120);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  const foot = doc.splitTextToSize('Thank you for choosing +P Holiday Lighting. This estimate is based on the measurements and photos provided and may be adjusted after an on-site review. Questions? Reply to pluspservices@gmail.com.', W - margin * 2);
-  doc.text(foot, margin, y);
+  lines.push('FIRST HANG TOTAL: ' + pdfMoney(jobTotal));
+  lines.push('');
+  lines.push('Suggested rehang - next season');
+  lines.push('(Final price only - not itemized)');
+  lines.push('Suggested rehang total: ' + pdfMoney(r.final));
+  lines.push('');
+  lines.push('Included: Takedown');
+  lines.push('Included: Maintenance');
+  if (notes) {
+    lines.push('');
+    lines.push('Notes:');
+    lines.push(notes);
+  }
+  lines.push('');
+  lines.push('Thank you for choosing +P Holiday Lighting.');
+  lines.push('Estimate may be adjusted after on-site review.');
+  lines.push('Questions: pluspservices@gmail.com');
 
   const safeName = name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-') || 'estimate';
-  doc.save('+P-Estimate-' + safeName + '.pdf');
+  downloadTextPdf('+P-Estimate-' + safeName + '.pdf', lines);
 }
-
-function waitForJsPdf(ms){
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    (function tick(){
-      if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
-      if (Date.now() - start > ms) return reject(new Error('PDF library failed to load'));
-      setTimeout(tick, 50);
-    })();
-  });
-}
-$('pdfBtn').addEventListener('click', async () => {
-  const btn = $('pdfBtn');
-  const prev = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Building PDF…';
+$('pdfBtn').addEventListener('click', () => {
   try {
     calc();
-    await waitForJsPdf(8000);
     buildPdfEstimate();
   } catch (err) {
     alert('Could not build PDF: ' + (err && err.message ? err.message : err));
-  } finally {
-    btn.disabled = false;
-    btn.textContent = prev;
   }
 });
 
@@ -1324,7 +1272,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=18').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=19').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
