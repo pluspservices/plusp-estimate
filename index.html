@@ -102,6 +102,8 @@ textarea{min-height:64px;resize:vertical}
       <input id="lastName" placeholder="Last" />
     </div>
   </div>
+  <label>Phone</label>
+  <input id="phone" type="tel" inputmode="tel" placeholder="(555) 555-5555" autocomplete="tel" />
   <div class="row">
     <div>
       <label>Street address</label>
@@ -130,6 +132,16 @@ textarea{min-height:64px;resize:vertical}
   <textarea id="notes" placeholder="Peaks, access, color preference…"></textarea>
   <span class="chip">First hang: roof $5 · glue $6 · balls $25</span>
   <span class="chip">Rehang: roof $2.50 · glue $3.50 · balls $25</span>
+  <div class="aiRow" style="margin-top:4px;margin-bottom:8px">
+    <button class="btn secondary small" type="button" id="copyCustomerLink" style="flex:1;margin:0">Copy customer form link</button>
+    <button class="btn toggle tiny" type="button" id="togglePasteCustomer">Paste info</button>
+  </div>
+  <div class="settingsPanel" id="pasteCustomerPanel">
+    <label>Paste customer summary or import code</label>
+    <textarea id="pasteCustomer" placeholder="Paste the message or PLUSP1:… code from the customer form"></textarea>
+    <button class="btn small" type="button" id="applyCustomerPaste">Fill customer fields</button>
+    <p class="hint">Customers use the form link, then text you the summary. Paste it here to fill name, phone, and address.</p>
+  </div>
   <div class="file btn secondary" style="margin-top:0">
     Add house photos
     <input id="photos" type="file" accept="image/*" multiple />
@@ -548,6 +560,7 @@ function calc(){
 
   const firstName = $('firstName').value.trim();
   const lastName = $('lastName').value.trim();
+  const phone = $('phone').value.trim();
   const street = $('street').value.trim();
   const subdivision = $('subdivision').value.trim();
   const city = $('city').value.trim();
@@ -559,6 +572,7 @@ function calc(){
 
   let text = '';
   if (name) text += name + '\n';
+  if (phone) text += phone + '\n';
   if (addr) text += addr + '\n';
   if (subdivision) text += 'Subdivision: ' + subdivision + '\n';
   if (first.length) {
@@ -593,11 +607,11 @@ function calc(){
   text += 'Takedown included.\n';
   text += 'Maintenance included.';
   if (notes) text += '\nNotes: ' + notes;
-  if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (addr ? addr+'\n' : '') + (subdivision ? 'Subdivision: '+subdivision+'\n' : '') + 'No line items yet.';
+  if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (phone ? phone+'\n' : '') + (addr ? addr+'\n' : '') + (subdivision ? 'Subdivision: '+subdivision+'\n' : '') + 'No line items yet.';
   $('copyText').textContent = text;
 }
 
-['firstName','lastName','street','subdivision','city','state','zip','notes','roofFt','treeBalls','bushBalls','winFt','archFt','garFt','tubs',
+['firstName','lastName','phone','street','subdivision','city','state','zip','notes','roofFt','treeBalls','bushBalls','winFt','archFt','garFt','tubs',
  'firstOverride','firstDiscAmt','firstDiscPct','rehangOverride','rehangDiscAmt','rehangDiscPct'].forEach(id=>{
   $(id).addEventListener('input', calc);
 });
@@ -804,6 +818,101 @@ $('copyBtn').addEventListener('click', async ()=>{
     setTimeout(()=>$('copyBtn').textContent='Copy estimate text',1200);
   } catch { prompt('Copy this estimate:', t); }
 });
+
+
+function b64urlEncode(str){
+  return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64urlDecode(s){
+  s = String(s||'').replace(/-/g,'+').replace(/_/g,'/');
+  while (s.length % 4) s += '=';
+  return decodeURIComponent(escape(atob(s)));
+}
+function applyCustomerInfo(data){
+  if (!data || typeof data !== 'object') return false;
+  const set = (id, v) => { if (v != null && String(v).trim() !== '') $(id).value = String(v).trim(); };
+  set('firstName', data.firstName);
+  set('lastName', data.lastName);
+  set('phone', data.phone);
+  set('street', data.street);
+  set('subdivision', data.subdivision);
+  set('city', data.city);
+  set('state', data.state || 'TX');
+  set('zip', data.zip);
+  if (data.notes && String(data.notes).trim()) {
+    const existing = $('notes').value.trim();
+    const n = String(data.notes).trim();
+    $('notes').value = existing ? (existing + '\n' + n) : n;
+  }
+  calc();
+  return true;
+}
+function parseCustomerPaste(raw){
+  const t = String(raw||'').trim();
+  if (!t) return null;
+  const code = t.match(/PLUSP1:([A-Za-z0-9_-]+)/);
+  if (code) {
+    try { return JSON.parse(b64urlDecode(code[1])); } catch(e) {}
+  }
+  if (t.startsWith('{')) {
+    try { return JSON.parse(t); } catch(e) {}
+  }
+  // loose line parser for human summary
+  const data = {};
+  const lines = t.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const m = line.match(/^(First name|Last name|Phone|Street|Subdivision|City|State|ZIP|Notes)\s*:\s*(.*)$/i);
+    if (m) {
+      const k = m[1].toLowerCase();
+      const v = m[2].trim();
+      if (k === 'first name') data.firstName = v;
+      else if (k === 'last name') data.lastName = v;
+      else if (k === 'phone') data.phone = v;
+      else if (k === 'street') data.street = v;
+      else if (k === 'subdivision') data.subdivision = v;
+      else if (k === 'city') data.city = v;
+      else if (k === 'state') data.state = v;
+      else if (k === 'zip') data.zip = v;
+      else if (k === 'notes') data.notes = v;
+    }
+  }
+  return Object.keys(data).length ? data : null;
+}
+function customerFormUrl(){
+  try { return new URL('customer.html', location.href).href; }
+  catch { return 'https://pluspservices.github.io/plusp-estimate/customer.html'; }
+}
+$('togglePasteCustomer').addEventListener('click', () => {
+  $('pasteCustomerPanel').classList.toggle('open');
+});
+$('copyCustomerLink').addEventListener('click', async () => {
+  const url = customerFormUrl();
+  try {
+    await navigator.clipboard.writeText(url);
+    $('copyCustomerLink').textContent = 'Link copied';
+    setTimeout(()=>$('copyCustomerLink').textContent='Copy customer form link',1400);
+  } catch {
+    prompt('Copy this customer form link:', url);
+  }
+});
+$('applyCustomerPaste').addEventListener('click', () => {
+  const data = parseCustomerPaste($('pasteCustomer').value);
+  if (!data) { alert('Could not read that paste. Use the customer form summary or PLUSP1 code.'); return; }
+  applyCustomerInfo(data);
+  $('pasteCustomer').value = '';
+  $('pasteCustomerPanel').classList.remove('open');
+  alert('Customer fields filled. Add photos and finish the estimate.');
+});
+(function loadFromHash(){
+  const h = location.hash || '';
+  const m = h.match(/[#&]c=([A-Za-z0-9_-]+)/);
+  if (!m) return;
+  try {
+    const data = JSON.parse(b64urlDecode(m[1]));
+    applyCustomerInfo(data);
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch (e) {}
+})();
 
 updateTreePreview();
 updateBushPreview();
