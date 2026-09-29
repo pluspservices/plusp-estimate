@@ -67,6 +67,15 @@ textarea{min-height:64px;resize:vertical}
 .treeList li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #243044;font-size:.9rem}
 .treeList button{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:.8rem}
 .previewBalls{font-size:1.1rem;font-weight:650;color:var(--accent);margin:4px 0 10px}
+.aiRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.aiStatus{font-size:.82rem;color:var(--muted);margin-top:8px;min-height:1.2em}
+.aiStatus.err{color:var(--warn)}
+.aiStatus.ok{color:var(--ok)}
+.settingsPanel{display:none;margin-top:10px;padding-top:10px;border-top:1px solid #243044}
+.settingsPanel.open{display:block}
+.keyRow{display:flex;gap:8px;align-items:end}
+.keyRow input{flex:1;margin-bottom:0}
+.keyRow .btn{width:auto;margin:0;padding:10px 12px;font-size:.85rem}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin-bottom:12px}
 .split > .card{margin-bottom:0}
 @media (max-width:780px){.split{grid-template-columns:1fr}.split > .card{margin-bottom:12px}}
@@ -118,6 +127,20 @@ textarea{min-height:64px;resize:vertical}
     <input id="photos" type="file" accept="image/*" multiple />
   </div>
   <div class="photos" id="preview"></div>
+  <div class="aiRow">
+    <button class="btn small" type="button" id="estimatePhotos" style="flex:1;margin:0">Estimate from photos</button>
+    <button class="btn toggle tiny" type="button" id="toggleAiSettings">API key</button>
+  </div>
+  <div class="settingsPanel" id="aiSettingsPanel">
+    <label>xAI API key (stored only on this device)</label>
+    <div class="keyRow">
+      <input id="xaiKey" type="password" autocomplete="off" placeholder="xai-…" />
+      <button class="btn secondary small" type="button" id="saveXaiKey">Save</button>
+    </div>
+    <p class="hint">Get a key at console.x.ai. Needed for photo AI. You can clear it anytime.</p>
+    <button class="btn secondary tiny" type="button" id="clearXaiKey">Clear key</button>
+  </div>
+  <div class="aiStatus" id="aiStatus"></div>
 </div>
 
 <div class="split">
@@ -612,26 +635,155 @@ $('setBush').addEventListener('click', () => {
   calc();
 });
 
-function wireToggle(btnId, panelId) {
+function wireToggle(btnId, panelId, openLabel, closedLabel) {
   const btn = $(btnId), panel = $(panelId);
   if (!btn || !panel) return;
+  const openTxt = openLabel || 'Hide';
+  const closedTxt = closedLabel || 'Override';
   btn.addEventListener('click', () => {
     panel.classList.toggle('open');
-    btn.textContent = panel.classList.contains('open') ? 'Hide override / discount' : 'Override / discount';
+    btn.textContent = panel.classList.contains('open') ? openTxt : closedTxt;
   });
 }
-wireToggle('toggleFirstOverride', 'firstOverridePanel');
-wireToggle('toggleRehangOverride', 'rehangOverridePanel');
+wireToggle('toggleFirstOverride', 'firstOverridePanel', 'Hide', 'Override');
+wireToggle('toggleRehangOverride', 'rehangOverridePanel', 'Hide', 'Override');
+
+let photoFiles = [];
+const KEY_LS = 'plusp_xai_key';
+
+function setAiStatus(msg, kind){
+  const el = $('aiStatus');
+  el.textContent = msg || '';
+  el.className = 'aiStatus' + (kind ? ' ' + kind : '');
+}
+
+function loadXaiKey(){
+  $('xaiKey').value = localStorage.getItem(KEY_LS) || '';
+}
+loadXaiKey();
+
+wireToggle('toggleAiSettings', 'aiSettingsPanel', 'Hide key', 'API key');
+
+$('saveXaiKey').addEventListener('click', ()=>{
+  const v = $('xaiKey').value.trim();
+  if (!v) { setAiStatus('Paste a key first.', 'err'); return; }
+  localStorage.setItem(KEY_LS, v);
+  setAiStatus('API key saved on this device.', 'ok');
+});
+$('clearXaiKey').addEventListener('click', ()=>{
+  localStorage.removeItem(KEY_LS);
+  $('xaiKey').value = '';
+  setAiStatus('API key cleared.', 'ok');
+});
+
+function fileToDataUrl(file, maxSide=1280, quality=0.72){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        const scale = Math.min(1, maxSide / Math.max(w, h));
+        w = Math.round(w * scale); h = Math.round(h * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 $('photos').addEventListener('change', e=>{
   const box = $('preview');
   box.innerHTML = '';
-  [...e.target.files].forEach(file=>{
+  photoFiles = [...e.target.files];
+  photoFiles.forEach(file=>{
     const img = document.createElement('img');
     img.src = URL.createObjectURL(file);
     img.alt = file.name;
     box.appendChild(img);
   });
+  setAiStatus(photoFiles.length ? photoFiles.length + ' photo(s) ready.' : '');
+});
+
+const ESTIMATE_SYSTEM = `You estimate Christmas light installs for +P Holiday Lighting from house photos.
+Return ONLY valid JSON (no markdown) with this shape:
+{"roofFt":number,"winFt":number,"archFt":number,"garFt":number,"treeBalls":number,"bushBalls":number,"tubs":number,"notes":string,"confidence":"low"|"medium"|"high"}
+Rates context (do not price in JSON): roofline $5/ft, glued windows/archways/garages $6/ft, tree/bush $25 per 25-ft ball, storage $50/tub optional.
+Trees: trunks only, max 10 ft; balls = ceil(lights_ft/25). Bushes: wrap spiral. Guess linear feet from visible exterior; if only front is shown, estimate front-facing work and say so in notes. Integers preferred.`;
+
+$('estimatePhotos').addEventListener('click', async ()=>{
+  const key = localStorage.getItem(KEY_LS) || $('xaiKey').value.trim();
+  if (!key) {
+    $('aiSettingsPanel').classList.add('open');
+    setAiStatus('Add an xAI API key first (API key button), then try again.', 'err');
+    return;
+  }
+  if (!photoFiles.length) {
+    setAiStatus('Add house photos first.', 'err');
+    return;
+  }
+  const btn = $('estimatePhotos');
+  btn.disabled = true;
+  setAiStatus('Looking at photos…');
+  try {
+    const urls = [];
+    for (const f of photoFiles.slice(0, 4)) urls.push(await fileToDataUrl(f));
+    const content = [
+      { type: 'text', text: 'Estimate lights for this property. JSON only.' },
+      ...urls.map(url => ({ type: 'image_url', image_url: { url, detail: 'high' } }))
+    ];
+    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + key
+      },
+      body: JSON.stringify({
+        model: 'grok-4.6',
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: ESTIMATE_SYSTEM },
+          { role: 'user', content }
+        ]
+      })
+    });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) {
+      const err = (data.error && (data.error.message || data.error)) || res.statusText || ('HTTP ' + res.status);
+      throw new Error(typeof err === 'string' ? err : JSON.stringify(err));
+    }
+    let text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '';
+    text = text.trim().replace(/^```json\s*/i,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end < 0) throw new Error('Could not parse AI response');
+    const parsed = JSON.parse(text.slice(start, end+1));
+    const setNum = (id, v) => { if (v != null && !Number.isNaN(+v)) $(id).value = Math.max(0, Math.round(+v)); };
+    setNum('roofFt', parsed.roofFt);
+    setNum('winFt', parsed.winFt);
+    setNum('archFt', parsed.archFt);
+    setNum('garFt', parsed.garFt);
+    setNum('treeBalls', parsed.treeBalls);
+    setNum('bushBalls', parsed.bushBalls);
+    setNum('tubs', parsed.tubs);
+    const noteBits = [];
+    if (parsed.notes) noteBits.push(String(parsed.notes));
+    noteBits.push('AI photo draft (' + (parsed.confidence || 'unknown') + ' confidence) — confirm before quoting.');
+    const existing = $('notes').value.trim();
+    $('notes').value = existing ? (existing + '\n' + noteBits.join(' ')) : noteBits.join(' ');
+    calc();
+    setAiStatus('Draft filled. Review footage/balls, then copy the estimate.', 'ok');
+  } catch (err) {
+    setAiStatus('Estimate failed: ' + (err && err.message ? err.message : err), 'err');
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 $('copyBtn').addEventListener('click', async ()=>{
