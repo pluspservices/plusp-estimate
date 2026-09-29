@@ -89,10 +89,6 @@ textarea{min-height:64px;resize:vertical}
 .savedList .title{font-weight:650;font-size:.95rem}
 .savedList .rowBtns{display:flex;gap:8px}
 .savedList .rowBtns .btn{flex:1;padding:8px;font-size:.8rem;margin:0}
-.slotList{list-style:none;margin:8px 0;padding:0}
-.slotList li{margin:0 0 8px}
-.slotList .btn{margin:0}
-.schedPreview{font-size:.9rem;color:var(--muted);margin:8px 0;line-height:1.4}
 .split .row3{grid-template-columns:1fr 1fr 1fr;gap:6px}
 .split .row3 input,.split .row3 select{font-size:.9rem;padding:8px 6px;margin-bottom:8px}
 .split .row3 label{font-size:.68rem;margin-bottom:4px}
@@ -331,25 +327,6 @@ textarea{min-height:64px;resize:vertical}
   <p class="hint" style="margin-top:0">1 C9 bulb + 1 clip per C9 ft · balled minis by the ball · packs round up</p>
   <div class="itemized" id="materialsText">No C9 or balls yet.</div>
   <button class="btn" type="button" id="copyMaterialsBtn">Copy materials list</button>
-
-  <div class="section">Schedule install</div>
-  <p class="hint" style="margin-top:0">Nothing is booked until you confirm in Google Calendar. Suggested times are weekday mornings — check your real free/busy before confirming, or ask me in chat for free slots.</p>
-  <label>Job length</label>
-  <select id="schedHours">
-    <option value="2">2 hours</option>
-    <option value="3">3 hours</option>
-    <option value="4" selected>4 hours</option>
-    <option value="6">6 hours</option>
-    <option value="8">8 hours</option>
-  </select>
-  <div class="section" style="margin-top:8px;text-transform:none;letter-spacing:0;font-size:.85rem;color:var(--muted)">Suggested (weekdays 8am CT)</div>
-  <ul class="slotList" id="slotList"></ul>
-  <div class="section" style="margin-top:4px;text-transform:none;letter-spacing:0;font-size:.85rem;color:var(--muted)">Or pick your own</div>
-  <label>Date &amp; start time</label>
-  <input id="schedStart" type="datetime-local" />
-  <p class="schedPreview" id="schedPreview">Pick a start time to preview the hold.</p>
-  <button class="btn" type="button" id="confirmSchedBtn">Confirm in Google Calendar</button>
-  <button class="btn secondary small" type="button" id="copySlotAskBtn">Copy free-slot ask (for Grok Bot)</button>
 
   <div class="actionRow">
     <button class="btn secondary small" type="button" id="saveQuoteBtn">Save quote</button>
@@ -917,136 +894,6 @@ $('copyMaterialsBtn').addEventListener('click', async ()=>{
   } catch { prompt('Copy materials:', t); }
 });
 
-function jobTitleForCal(){
-  const name = [$('firstName').value.trim(), $('lastName').value.trim()].filter(Boolean).join(' ');
-  const street = $('street').value.trim();
-  if (name && street) return '+P Install — ' + name + ' @ ' + street;
-  if (name) return '+P Install — ' + name;
-  if (street) return '+P Install — ' + street;
-  return '+P Holiday Lighting Install';
-}
-function jobDetailsForCal(){
-  const bits = [];
-  const phone = $('phone').value.trim();
-  const sub = $('subdivision').value.trim();
-  const city = $('city').value.trim();
-  const state = ($('state').value.trim() || 'TX').toUpperCase();
-  const zip = $('zip').value.trim();
-  const notes = $('notes').value.trim();
-  if (phone) bits.push('Phone: ' + phone);
-  if (sub) bits.push('Subdivision: ' + sub);
-  const addr = [$('street').value.trim(), [city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(' ');
-  if (addr) bits.push('Address: ' + addr);
-  if (notes) bits.push('Notes: ' + notes);
-  const mat = ($('materialsText') && $('materialsText').textContent) || '';
-  if (mat && !mat.includes('No C9 or balls yet')) bits.push('', mat);
-  const quote = ($('copyText') && $('copyText').textContent) || '';
-  if (quote && !quote.includes('No line items yet')) bits.push('', 'Estimate:', quote);
-  return bits.join('\n');
-}
-function jobLocationForCal(){
-  const street = $('street').value.trim();
-  const city = $('city').value.trim();
-  const state = ($('state').value.trim() || 'TX').toUpperCase();
-  const zip = $('zip').value.trim();
-  return [street, [city, state].filter(Boolean).join(', '), zip].filter(Boolean).join(', ');
-}
-function pad2(n){ return String(n).padStart(2,'0'); }
-function toCalStamp(d){
-  return d.getFullYear() + pad2(d.getMonth()+1) + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + pad2(d.getMinutes()) + '00';
-}
-function googleCalUrl(start, end){
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: jobTitleForCal(),
-    dates: toCalStamp(start) + '/' + toCalStamp(end),
-    details: jobDetailsForCal(),
-    location: jobLocationForCal(),
-    ctz: 'America/Chicago'
-  });
-  return 'https://calendar.google.com/calendar/render?' + params.toString();
-}
-function schedHours(){ return Math.max(1, +$('schedHours').value || 4); }
-function formatSlotLabel(d, hours){
-  const end = new Date(d.getTime() + hours * 3600 * 1000);
-  const opts = { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' };
-  return d.toLocaleString('en-US', opts) + ' → ' + end.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-}
-function nextWeekdayMornings(count){
-  const out = [];
-  const cur = new Date();
-  cur.setSeconds(0,0);
-  cur.setMinutes(0);
-  // start tomorrow
-  let d = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1, 8, 0, 0, 0);
-  while (out.length < count) {
-    const day = d.getDay(); // 0 Sun .. 6 Sat
-    if (day !== 0 && day !== 6) out.push(new Date(d));
-    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 8, 0, 0, 0);
-  }
-  return out;
-}
-function renderSlotSuggestions(){
-  const ul = $('slotList');
-  if (!ul) return;
-  ul.innerHTML = '';
-  const hours = schedHours();
-  nextWeekdayMornings(5).forEach(start => {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn secondary small';
-    btn.textContent = formatSlotLabel(start, hours);
-    btn.addEventListener('click', () => {
-      // fill datetime-local in local time
-      const local = start.getFullYear() + '-' + pad2(start.getMonth()+1) + '-' + pad2(start.getDate()) + 'T' + pad2(start.getHours()) + ':' + pad2(start.getMinutes());
-      $('schedStart').value = local;
-      updateSchedPreview();
-    });
-    li.appendChild(btn);
-    ul.appendChild(li);
-  });
-}
-function parseSchedStart(){
-  const v = $('schedStart').value;
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-function updateSchedPreview(){
-  const start = parseSchedStart();
-  const hours = schedHours();
-  if (!start) {
-    $('schedPreview').textContent = 'Pick a start time to preview the hold.';
-    return;
-  }
-  const end = new Date(start.getTime() + hours * 3600 * 1000);
-  $('schedPreview').textContent = 'Hold: ' + formatSlotLabel(start, hours) + ' (America/Chicago). Confirm opens Google Calendar — save there to book.';
-}
-$('schedHours').addEventListener('change', () => { renderSlotSuggestions(); updateSchedPreview(); });
-$('schedStart').addEventListener('input', updateSchedPreview);
-$('confirmSchedBtn').addEventListener('click', () => {
-  const start = parseSchedStart();
-  if (!start) { alert('Pick a date and start time first (or tap a suggested slot).'); return; }
-  const end = new Date(start.getTime() + schedHours() * 3600 * 1000);
-  const url = googleCalUrl(start, end);
-  const ok = confirm('Open Google Calendar with this install hold?\n\n' + formatSlotLabel(start, schedHours()) + '\n\nNothing is booked until you save it in Google Calendar.');
-  if (!ok) return;
-  window.open(url, '_blank', 'noopener');
-});
-$('copySlotAskBtn').addEventListener('click', async () => {
-  const hours = schedHours();
-  const name = [$('firstName').value.trim(), $('lastName').value.trim()].filter(Boolean).join(' ') || 'this customer';
-  const street = $('street').value.trim() || 'their address';
-  const msg = 'Please suggest ' + hours + '-hour install slots on my Google Calendar (America/Chicago) for +P job: ' + name + ' at ' + street + '. Prefer weekdays. I will confirm before you create any event.';
-  try {
-    await navigator.clipboard.writeText(msg);
-    $('copySlotAskBtn').textContent = 'Copied — paste in chat';
-    setTimeout(()=>$('copySlotAskBtn').textContent='Copy free-slot ask (for Grok Bot)',1600);
-  } catch { prompt('Copy this and paste in chat:', msg); }
-});
-renderSlotSuggestions();
-updateSchedPreview();
 
 
 
