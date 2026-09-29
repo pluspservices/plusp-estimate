@@ -37,7 +37,6 @@ textarea{min-height:72px;resize:vertical}
 .logo{width:64px;height:64px;border-radius:14px;background:#fff;padding:5px;object-fit:contain;flex-shrink:0;border:1px solid var(--line)}
 .brand h1{margin:0 0 2px}
 .brand .sub{margin:0}
-
 </style>
 </head>
 <body>
@@ -50,8 +49,12 @@ textarea{min-height:72px;resize:vertical}
 </div>
 
 <div class="card" id="formCard">
-  <form id="quoteForm" novalidate>
+  <form id="quoteForm" action="https://formsubmit.co/pluspservices@gmail.com" method="POST" enctype="multipart/form-data" novalidate>
     <input type="text" name="_honey" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+    <input type="hidden" name="_subject" id="subjectField" value="+P quote request" />
+    <input type="hidden" name="_template" value="table" />
+    <input type="hidden" name="_captcha" value="false" />
+    <input type="hidden" name="_next" value="https://pluspservices.github.io/plusp-estimate/customer.html?sent=1" />
     <div class="row">
       <div>
         <label>First name</label>
@@ -90,13 +93,15 @@ textarea{min-height:72px;resize:vertical}
     </div>
     <label>Your email (optional — so we can reply)</label>
     <input name="email" id="email" type="email" inputmode="email" placeholder="you@email.com" autocomplete="email" />
+    <input type="hidden" name="_replyto" id="replytoField" value="" />
     <label>Notes (colors, peaks, gate code, etc.)</label>
     <textarea name="notes" id="notes" placeholder="Anything that helps with the quote…"></textarea>
-    <p class="hint">Optional: add house photos. They go with your submission.</p>
+    <p class="hint">Optional: add up to 4 house photos (they’ll be attached to the email we receive). Keep them under ~10 MB total.</p>
     <div class="file btn secondary" style="margin-top:0;margin-bottom:10px">
       Add house photos (optional)
-      <input id="photos" name="attachment" type="file" accept="image/*" multiple />
+      <input id="photos" type="file" accept="image/*" multiple />
     </div>
+    <div id="fileSlots"></div>
     <div class="photos" id="preview"></div>
     <button class="btn" type="submit" id="submitBtn">Submit quote request</button>
     <p class="err hidden" id="formErr"></p>
@@ -110,65 +115,106 @@ textarea{min-height:72px;resize:vertical}
 
 <script>
 const $ = id => document.getElementById(id);
-const ENDPOINT = 'https://formsubmit.co/ajax/pluspservices@gmail.com';
+let selectedFiles = [];
 
-$('photos').addEventListener('change', () => {
+if (new URLSearchParams(location.search).get('sent') === '1') {
+  $('formCard').classList.add('hidden');
+  $('thanksCard').classList.remove('hidden');
+}
+
+function compressImage(file, maxSide, quality) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) { resolve(file); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, maxSide / Math.max(w, h));
+      w = Math.round(w * scale); h = Math.round(h * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return; }
+        const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+        resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+function renderPreview() {
   const box = $('preview');
   box.innerHTML = '';
-  [...$('photos').files].slice(0, 6).forEach(f => {
+  selectedFiles.forEach(f => {
     const img = document.createElement('img');
     img.src = URL.createObjectURL(f);
     box.appendChild(img);
   });
+}
+
+function syncFileInputs() {
+  const slots = $('fileSlots');
+  slots.innerHTML = '';
+  selectedFiles.forEach((f, i) => {
+    // FormSubmit wants separate file fields; name "attachment" for the first is conventional
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.name = i === 0 ? 'attachment' : ('attachment' + (i + 1));
+    input.className = 'hp';
+    input.tabIndex = -1;
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    input.files = dt.files;
+    slots.appendChild(input);
+  });
+}
+
+$('photos').addEventListener('change', async () => {
+  const picked = [...$('photos').files].slice(0, 4);
+  $('formErr').classList.add('hidden');
+  $('submitBtn').disabled = true;
+  $('submitBtn').textContent = 'Preparing photos…';
+  selectedFiles = [];
+  for (const f of picked) {
+    selectedFiles.push(await compressImage(f, 1600, 0.82));
+  }
+  const total = selectedFiles.reduce((n, f) => n + f.size, 0);
+  if (total > 9.5 * 1024 * 1024) {
+    $('formErr').textContent = 'Photos are still too large after compressing. Please pick fewer or smaller pictures.';
+    $('formErr').classList.remove('hidden');
+    selectedFiles = [];
+  }
+  renderPreview();
+  syncFileInputs();
+  $('photos').value = '';
+  $('submitBtn').disabled = false;
+  $('submitBtn').textContent = 'Submit quote request';
 });
 
-$('quoteForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
+$('quoteForm').addEventListener('submit', (e) => {
   $('formErr').classList.add('hidden');
   const first = $('firstName').value.trim();
   const last = $('lastName').value.trim();
   const phone = $('phone').value.trim();
   const street = $('street').value.trim();
   if (!first || !last || !phone || !street) {
+    e.preventDefault();
     $('formErr').textContent = 'Please fill first name, last name, phone, and street address.';
     $('formErr').classList.remove('hidden');
     return;
   }
-  const btn = $('submitBtn');
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-  try {
-    const fd = new FormData($('quoteForm'));
-    fd.set('_subject', '+P quote request — ' + first + ' ' + last);
-    fd.set('_template', 'table');
-    fd.set('_captcha', 'false');
-    fd.set('_honey', fd.get('_honey') || '');
-    // FormSubmit uses replyto from email field when named email
-    if ($('email').value.trim()) fd.set('_replyto', $('email').value.trim());
-    // Limit attachments size roughly: FormSubmit free tier is limited
-    const files = [...$('photos').files];
-    fd.delete('attachment');
-    files.slice(0, 4).forEach((f, i) => {
-      if (f.size <= 5 * 1024 * 1024) fd.append('attachment' + (i ? i : ''), f);
-    });
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      body: fd,
-      headers: { Accept: 'application/json' }
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error((data && (data.message || data.error)) || ('Send failed (' + res.status + ')'));
-    }
-    $('formCard').classList.add('hidden');
-    $('thanksCard').classList.remove('hidden');
-    window.scrollTo(0, 0);
-  } catch (err) {
-    $('formErr').textContent = 'Could not send right now. Try again in a minute, or text us instead. (' + (err && err.message ? err.message : err) + ')';
-    $('formErr').classList.remove('hidden');
-    btn.disabled = false;
-    btn.textContent = 'Submit quote request';
-  }
+  $('subjectField').value = '+P quote request — ' + first + ' ' + last;
+  const em = $('email').value.trim();
+  $('replytoField').value = em || '';
+  syncFileInputs();
+  $('submitBtn').disabled = true;
+  $('submitBtn').textContent = 'Sending…';
+  // Native multipart POST — FormSubmit AJAX cannot attach files
 });
 </script>
 </body>
