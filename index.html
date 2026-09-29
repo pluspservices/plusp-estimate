@@ -321,7 +321,7 @@ textarea{min-height:64px;resize:vertical}
     <li>Takedown included</li>
     <li>Maintenance included</li>
   </ul>
-  <div class="itemized" id="copyText" hidden></div>
+<textarea id="copyText" hidden aria-hidden="true"></textarea>
   <button class="btn" type="button" id="pdfBtn">Download PDF estimate</button>
 
   <div class="section">Materials for this job</div>
@@ -650,7 +650,7 @@ function calc(){
   text += 'Maintenance included.';
   if (notes) text += '\nNotes: ' + notes;
   if (!first.length && !rehang.length) text = (name ? name+'\n' : '') + (phone ? phone+'\n' : '') + (addr ? addr+'\n' : '') + (subdivision ? 'Subdivision: '+subdivision+'\n' : '') + 'No line items yet.';
-  $('copyText').textContent = text;
+  const ct=$('copyText'); if(ct){ if('value' in ct) ct.value=text; else ct.textContent=text; }
 
   // Materials: C9 ft = roof + glued; 1 bulb + 1 clip per ft; balls for trees/bushes
   const c9Ft = Math.round((roof + win + arch + gar) * 100) / 100;
@@ -1178,7 +1178,7 @@ function snapshotForm(){
     lineAdj,
     treeLog: treeLog.slice(),
     bushLog: bushLog.slice(),
-    copyText: $('copyText').textContent,
+    copyText: ($('copyText').value || $('copyText').textContent || ''),
     contingencyOn: !!window._pluspContingencyOn
   };
 }
@@ -1306,7 +1306,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=17').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });

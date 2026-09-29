@@ -1,4 +1,4 @@
-const CACHE = 'plusp-estimate-v16';
+const CACHE = 'plusp-estimate-v17';
 const ASSETS = [
   './',
   './index.html',
