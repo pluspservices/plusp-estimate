@@ -6,7 +6,7 @@
   var PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
   var WEB3FORMS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
   var LINE_TOOLS = { roofline: 1, window: 1, door: 1, garage: 1, archway: 1 };
-  var OPEN_BOTTOM = { window: 1, door: 1, garage: 1, archway: 1 };
+  var OPEN_BOTTOM = { door: 1, garage: 1, archway: 1 };
   var TYPE_LABELS = {
     roofline: 'Roofline',
     window: 'Window',
@@ -22,8 +22,8 @@
       freehand: 'Drag your finger along the roof. Lift your finger to finish the curve.'
     },
     window: {
-      straight: 'Tap the two top corners, then the two bottom corners, and tap Done. We light the sides and the top, not the sill.',
-      freehand: 'Drag around the sides and the top, then lift your finger. The bottom edge stays dark.'
+      straight: 'Tap all four corners of the window, then tap Done. Lights go all the way around.',
+      freehand: 'Drag all the way around the window, then lift your finger. Lights go on every side.'
     },
     door: {
       straight: 'Tap the top corners, then the bottom corners, and tap Done. Lights go up the sides and across the top only.',

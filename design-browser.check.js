@@ -193,7 +193,7 @@ async function run() {
   assert.match(customer, /action:\s*'lead'/);
   assert.match(customer, /AKfycbzbvvFGqolPI0zKlmWQhngCW/);
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-  assert.match(sw, /plusp-estimate-v36/);
+  assert.match(sw, /plusp-estimate-v37/);
   assert.match(sw, /design\.html/);
 
   const house = path.join(SHOTS, 'sample-house.png');
@@ -282,7 +282,13 @@ async function run() {
   assert.ok(garageShape.withBottom > garageShape.lit + 40, 'bottom edge must be omitted from the garage length');
   await page.evaluate(() => document.getElementById('stage').scrollIntoView({ block: 'center' }));
   await settle(page);
-  await (await page.$('#stage')).screenshot({ path: path.join(SHOTS, 'design_garage_open_bottom.png') });
+  const windowShape = await page.evaluate(() => {
+    const el = window.__plusp.elements.filter((item) => item.type === 'window').pop();
+    const run = (el.runs && el.runs[0]) || el.points;
+    return { lit: window.PlusPPricing.polylineLength(run, false) };
+  });
+  assert.ok(Math.abs(windowShape.lit - 400) < 8, 'window should be priced on the full perimeter');
+  await (await page.$('#stage')).screenshot({ path: path.join(SHOTS, 'design_window_and_garage.png') });
 
   await page.click('#modeFreehand');
   await page.click('#tool-roofline');

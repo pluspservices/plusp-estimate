@@ -64,6 +64,8 @@
   };
 
   var GLUE_TYPES = { window: 1, door: 1, garage: 1, archway: 1 };
+  // Windows are a full rectangle. Doors, garages, and arches leave the bottom dark.
+  var OPEN_BOTTOM = { door: 1, garage: 1, archway: 1 };
 
   function padFactor() {
     return 1 + Number(PRICING.footagePad || 0);
@@ -121,16 +123,24 @@
   }
 
   /**
-   * Window, door, garage, and arch outlines are lit on the sides and top only.
-   * The bottom edge (sill / threshold) is left dark and is not priced.
-   * Returns one or more open polylines. Rooflines are unchanged.
-   * Safe to call again on its own result.
+   * Windows are lit on all four sides (full perimeter).
+   * Doors, garages, and arches are lit on the sides and top only.
+   * Rooflines are unchanged. Safe to call again on its own result.
    */
   function litRuns(points, type) {
     if (!points || points.length < 2) return [];
     var pts = points.map(copyPt);
-    if (!GLUE_TYPES[type] || pts.length < 3) return [pts];
+    if (type === 'window' && pts.length >= 3) return [closeLoop(pts)];
+    if (!OPEN_BOTTOM[type] || pts.length < 3) return [pts];
     return stripBottomEdge(pts);
+  }
+
+  function closeLoop(points) {
+    var pts = points.map(copyPt);
+    var a = pts[0];
+    var b = pts[pts.length - 1];
+    if (Math.hypot(a.x - b.x, a.y - b.y) > 0.5) pts.push(a);
+    return pts;
   }
 
   function stripBottomEdge(points) {
@@ -407,7 +417,8 @@
       color: el.color || 'warm',
       lengthFt: lengthFt,
       closed: false,
-      openBottom: !!GLUE_TYPES[el.type] && (el.points || []).length >= 3
+      openBottom: !!OPEN_BOTTOM[el.type] && (el.points || []).length >= 3,
+      fullOutline: el.type === 'window' && (el.points || []).length >= 3
     };
   }
 
@@ -500,6 +511,7 @@
       return 'width ' + feetLabel(item.widthFt) + ', height ' + feetLabel(item.heightFt) + ', circumference ' + feetLabel(item.circFt) + ' (π × width), lights ' + feetLabel(item.lightsFt) + ' = circumference × height × 12 / ' + PRICING.bushSpacingIn + ', with pad ' + feetLabel(item.paddedFt) + ', ' + item.balls + ' ball' + (item.balls === 1 ? '' : 's') + ' × ' + money(PRICING.ballPrice) + ' = ' + money(item.price);
     }
     if (item.openBottom) return 'sides and top only (bottom left dark) ' + feetLabel(item.lengthFt);
+    if (item.fullOutline) return 'full outline ' + feetLabel(item.lengthFt);
     return 'line ' + feetLabel(item.lengthFt);
   }
 
@@ -508,6 +520,7 @@
     COLOR_LABELS: COLOR_LABELS,
     CATEGORY_LABELS: CATEGORY_LABELS,
     GLUE_TYPES: GLUE_TYPES,
+    OPEN_BOTTOM: OPEN_BOTTOM,
     money: money,
     formatRange: formatRange,
     feetLabel: feetLabel,

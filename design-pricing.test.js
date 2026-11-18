@@ -98,10 +98,20 @@ test('linear footage is summed before rounding', () => {
   assert.equal(est.low, 109);
 });
 
-test('window, door, garage, and arch outlines leave the bottom edge dark', () => {
+test('windows use the full perimeter; doors and garages leave the bottom dark', () => {
   const rect = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }];
-  // Full perimeter would be 30 ft. Lit edges are left + top + right = 20 ft.
-  for (const type of ['window', 'door', 'garage']) {
+  // 100 px by 50 px at 10 px/ft is 10 ft by 5 ft.
+  const windowRuns = api.litRuns(rect, 'window');
+  assert.equal(api.litLengthPx(rect, 'window'), 300);
+  assert.equal(api.polylineLength(api.litRuns(windowRuns[0], 'window')[0], false), 300);
+  const windowEst = api.buildEstimate({ pxPerFt: 10, elements: [{ type: 'window', points: rect }] });
+  assert.equal(windowEst.categories[0].lengthFt, 30);
+  // 30 ft × 1.075 × $6 = 193.5 → $194
+  assert.equal(windowEst.low, 194);
+  assert.match(api.ownerReport(windowEst), /full outline/);
+  assert.doesNotMatch(api.ownerReport(windowEst), /bottom left dark/);
+
+  for (const type of ['door', 'garage']) {
     const runs = api.litRuns(rect, type);
     assert.equal(runs.length, 1);
     assert.equal(api.litLengthPx(rect, type), 200);
@@ -122,9 +132,11 @@ test('window, door, garage, and arch outlines leave the bottom edge dark', () =>
     Math.hypot(25, 40) + Math.hypot(25, 10) + Math.hypot(25, 10) + Math.hypot(25, 40)
   )) < 0.01);
 
-  // An open U is already sides + top. Stripping must not shorten it.
+  // An open U stays sides + top for a garage. A window closes that U into 30 ft.
   const u = [{ x: 0, y: 50 }, { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }];
-  assert.equal(api.litLengthPx(u, 'window'), 200);
+  assert.equal(api.litLengthPx(u, 'garage'), 200);
+  assert.equal(api.litLengthPx(u, 'door'), 200);
+  assert.equal(api.litLengthPx(u, 'window'), 300);
 
   // A single top line stays intact.
   const top = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
