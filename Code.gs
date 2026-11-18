@@ -1,12 +1,30 @@
 /**
  * +P Holiday Lighting — Prospects API
- * Deploy: Deploy → Manage deployments → Edit → New version → Deploy
- * Execute as: Me · Who has access: Anyone
+ *
+ * DEPLOY (keeps the same web app URL the website already posts to)
+ * 1. Open the Apps Script project bound to the +P Client Tracker spreadsheet.
+ * 2. Open Code.gs, select all, delete, paste this entire file, and save.
+ * 3. In the function dropdown choose authorizeMailPermission and click Run.
+ *    Approve "Send email as you". Check pluspservices@gmail.com for
+ *    "+P mail permission check" (look in spam the first time).
+ * 4. Deploy → Manage deployments → pencil on the existing Web app →
+ *    Version: New version → Deploy.
+ *    Do not use New deployment. That would change the URL.
+ *    Execute as: Me. Who has access: Anyone.
+ *
+ * design.html posts action "lead" with the original photo in photos[],
+ * plus design_image (JPEG of the lights), owner_estimate (footage for Erik),
+ * estimate_low / estimate_high, and source "design form".
+ * This script saves both images in the lead folder, writes design-estimate.txt,
+ * adds the Client Tracker row, and emails pluspservices@gmail.com with the
+ * images attached. customer.html leads (no design_image) are unchanged and
+ * still do not send this mail — that page emails through Web3Forms.
  */
 var PROSPECTS_SHEET_ID = '1lRYPaL2TR1YM1zj5A983FUMdOq74OKo_z3V4CTI84Tk';
 var LEAD_PHOTOS_FOLDER_ID = '1c2sHhFctt5DU9ZSOOqfB5-plMKeoNyu6';
 var QUOTES_FOLDER_ID = '1JPLVPb0qwDYKwaKPu86Hdo3jgQZhrj9x';
 var LOGO_FILE_ID = '1idksk7mIhRdB0dpoQ7xc0S5W3bS2i7Un';
+var OWNER_EMAIL = 'pluspservices@gmail.com';
 
 function doPost(e) {
   try {
@@ -56,19 +74,57 @@ function handleLead(data) {
   var parent = DriveApp.getFolderById(LEAD_PHOTOS_FOLDER_ID);
   var folder = parent.createFolder(folderName);
   var saved = 0;
-  for (var i = 0; i < photos.length && i < 6; i++) {
+  var designSaveError = '';
+  var skipNamedDesign = !!(data.design_image && data.design_image.data);
+  for (var i = 0; i < photos.length && i < 8; i++) {
     var p = photos[i];
     if (!p || !p.data) continue;
-    var bytes = Utilities.base64Decode(String(p.data).replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
-    var blob = Utilities.newBlob(bytes, p.mime || 'image/jpeg', p.name || ('photo-' + (i + 1) + '.jpg'));
-    folder.createFile(blob);
-    saved++;
+    if (skipNamedDesign && isDesignPhoto_(p)) continue;
+    try {
+      folder.createFile(imageBlob_(p, 'photo-' + (saved + 1) + '.jpg'));
+      saved++;
+    } catch (imgErr) {
+      if (!designSaveError) designSaveError = String(imgErr && imgErr.message ? imgErr.message : imgErr);
+    }
+  }
+  if (skipNamedDesign) {
+    try {
+      folder.createFile(imageBlob_(data.design_image, 'design-preview.jpg'));
+      saved++;
+    } catch (imgErr2) {
+      designSaveError = String(imgErr2 && imgErr2.message ? imgErr2.message : imgErr2);
+    }
+  }
+
+  var estimateText = clean_(data.owner_estimate);
+  if (estimateText) {
+    try {
+      replaceNamedFile_(folder, 'design-estimate.txt', Utilities.newBlob(estimateText, 'text/plain', 'design-estimate.txt'));
+    } catch (fileErr) {}
+  }
+
+  var wantsDesignMail = skipNamedDesign || !!estimateText || clean_(data.source) === 'design form';
+  var emailSent = false;
+  var emailError = '';
+  if (wantsDesignMail) {
+    try {
+      sendDesignEmail_(data, folder, estimateText);
+      emailSent = true;
+    } catch (mailErr) {
+      emailError = String(mailErr && mailErr.message ? mailErr.message : mailErr);
+    }
+  }
+
+  var source = clean_(data.source) || 'customer form';
+  var lowCell = '';
+  if (data.estimate_low === 0 || (data.estimate_low != null && data.estimate_low !== '' && !isNaN(Number(data.estimate_low)))) {
+    lowCell = Number(data.estimate_low);
   }
 
   var sheet = sheet_();
   sheet.appendRow([
     id, stamp, 'New lead', first, last, phone, email, street, subdivision, city, state, zip,
-    notes, saved, folder.getUrl(), '', '', '', stamp, 'customer form'
+    notes, saved, folder.getUrl(), lowCell, '', '', stamp, source
   ]);
 
   return {
@@ -76,8 +132,60 @@ function handleLead(data) {
     prospectId: id,
     photoCount: saved,
     folderUrl: folder.getUrl(),
-    sheetUrl: 'https://docs.google.com/spreadsheets/d/' + PROSPECTS_SHEET_ID + '/edit'
+    sheetUrl: 'https://docs.google.com/spreadsheets/d/' + PROSPECTS_SHEET_ID + '/edit',
+    emailSent: emailSent,
+    emailError: emailError,
+    designSaveError: designSaveError
   };
+}
+
+function isDesignPhoto_(p) {
+  var n = String(p && p.name || '').toLowerCase();
+  return n === 'design-preview.jpg' || n === 'design-preview.jpeg';
+}
+
+function imageBlob_(photo, fallbackName) {
+  var bytes = Utilities.base64Decode(String(photo.data).replace(/^data:image\/[a-zA-Z+]+;base64,/, ''));
+  var name = photo.name || fallbackName || 'photo.jpg';
+  return Utilities.newBlob(bytes, photo.mime || 'image/jpeg', name);
+}
+
+function sendDesignEmail_(data, folder, estimateText) {
+  var first = clean_(data.first_name);
+  var last = clean_(data.last_name);
+  var subject = '+P light design — ' + last + ', ' + first;
+  var street = clean_(data.street);
+  if (street) subject += ' — ' + street;
+  subject = subject.substring(0, 180);
+  var body = estimateText || 'New light design lead.';
+  if (body.length > 18000) body = body.substring(0, 18000) + '\n…(truncated)';
+  body += '\n\nDrive folder: ' + folder.getUrl();
+  body += '\nTracker: https://docs.google.com/spreadsheets/d/' + PROSPECTS_SHEET_ID + '/edit';
+  body += '\n\nNothing was emailed to the customer. Review the design, then text them a final quote.';
+  var attachments = [];
+  if (data.design_image && data.design_image.data) {
+    attachments.push(imageBlob_(data.design_image, 'design-preview.jpg'));
+  }
+  var photos = data.photos || [];
+  for (var i = 0; i < photos.length && attachments.length < 5; i++) {
+    if (!photos[i] || !photos[i].data) continue;
+    if (isDesignPhoto_(photos[i]) && data.design_image && data.design_image.data) continue;
+    attachments.push(imageBlob_(photos[i], 'photo-' + (i + 1) + '.jpg'));
+  }
+  var mail = {
+    to: OWNER_EMAIL,
+    subject: subject,
+    body: body,
+    attachments: attachments
+  };
+  var reply = clean_(data.email);
+  if (reply) mail.replyTo = reply;
+  MailApp.sendEmail(mail);
+}
+
+/** Run once from the editor (Run ▶) to grant "Send email as you", then redeploy. */
+function authorizeMailPermission() {
+  MailApp.sendEmail(OWNER_EMAIL, '+P mail permission check', 'Apps Script can email design leads to this inbox. You can ignore this message.');
 }
 
 function findRowById_(rows, id) {

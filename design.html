@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#0f1419"/>
+<meta name="robots" content="noindex"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<title>+P Design Your Lights</title>
+<!-- Rates live in design-pricing.js (the PRICING object). -->
+<link rel="apple-touch-icon" href="icon-180.png"/>
+<style>
+:root{--bg:#0f1419;--card:#1a2332;--text:#f2f5f8;--muted:#9aa8b8;--accent:#e8b84a;--ok:#3dd68c;--line:#2a3a4f;--warn:#ff8f6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--text)}
+body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+padding:max(14px,env(safe-area-inset-top)) 14px max(28px,env(safe-area-inset-bottom));max-width:640px;margin-left:auto;margin-right:auto}
+h1{font-size:1.25rem;margin:0 0 2px}
+h2{font-size:.95rem;margin:0 0 8px}
+.sub{color:var(--muted);font-size:.88rem;margin:0 0 6px;line-height:1.35}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:.78rem;color:var(--muted);margin:0 0 6px;font-weight:500}
+input,textarea,select{width:100%;font-size:16px;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f1419;color:var(--text);margin-bottom:10px}
+textarea{min-height:72px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:2fr .7fr 1fr;gap:8px}
+@media (max-width:480px){.row3{grid-template-columns:1fr 1fr}}
+.btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;font-size:1rem;font-weight:650;background:var(--accent);color:#1a1200;margin-top:4px;text-align:center;text-decoration:none}
+.btn:disabled{opacity:.55}
+.btn.secondary{background:#243044;color:var(--text);border:1px solid var(--line);margin-top:8px}
+.hint{font-size:.78rem;color:var(--muted);margin:0 0 10px;line-height:1.4}
+.ok{color:var(--ok);font-size:.95rem;margin:0 0 8px;line-height:1.4}
+.err{color:var(--warn);font-size:.9rem;margin:8px 0 0;line-height:1.4}
+.hidden{display:none!important}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.brand .titles{min-width:0}
+.logo{width:64px;height:64px;border-radius:14px;background:#fff;padding:5px;object-fit:contain;flex-shrink:0;border:1px solid var(--line)}
+.brand h1{margin:0 0 2px}
+.brand a{color:var(--accent);font-weight:650;text-decoration:none}
+.file{position:relative;overflow:hidden;display:block;text-align:center}
+.file input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:16px}
+.hp{position:absolute;left:-9999px;opacity:0;height:0;width:0;overflow:hidden}
+.tools{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.tool{flex:0 0 auto;border:1px solid var(--line);background:#243044;color:var(--text);border-radius:999px;padding:8px 12px;font-size:.82rem;font-weight:650}
+.tool.on{background:var(--accent);color:#1a1200;border-color:var(--accent)}
+.colors{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.swatch{flex:0 0 auto;display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:#243044;color:var(--text);border-radius:999px;padding:6px 10px;font-size:.75rem;font-weight:650}
+.swatch.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.dot{width:14px;height:14px;border-radius:50%;box-shadow:0 0 6px rgba(255,255,255,.45);flex-shrink:0}
+.stage{position:relative;border-radius:12px;overflow:hidden;background:#070b10;touch-action:none;overscroll-behavior:contain;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100%;touch-action:none;cursor:crosshair}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.bar .btn,.bar button{flex:1;min-width:0;margin:0;padding:10px 8px;font-size:.85rem}
+button.mini{border:1px solid var(--line);background:#243044;color:var(--text);border-radius:10px;padding:10px 8px;font-size:.82rem;font-weight:650}
+button.mini.on{background:var(--accent);color:#1a1200;border-color:var(--accent)}
+.zoomRow{display:grid;grid-template-columns:auto auto auto 1fr;gap:8px;margin-top:8px}
+.zoomRow button{margin:0}
+.list{list-style:none;margin:8px 0 0;padding:0}
+.list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #243044;font-size:.9rem}
+.list li.on{color:var(--accent)}
+.list button{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:.78rem}
+.line{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #243044;font-size:.95rem}
+.line:last-child{border-bottom:none}
+.total{font-size:1.45rem;font-weight:750;color:var(--accent);margin:4px 0}
+.note{color:var(--warn);font-size:.82rem;margin:8px 0 0;line-height:1.4}
+.step{font-size:.72rem;color:var(--accent);letter-spacing:.04em;text-transform:uppercase;margin:0 0 4px}
+.stepper{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.stepper button{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:#243044;color:var(--text);font-size:1.3rem}
+.stepper input{margin:0;text-align:center}
+.phone{color:var(--accent);font-weight:700;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="brand">
+  <img class="logo" src="logo.png" width="64" height="64" alt="+P Holiday Lighting"/>
+  <div class="titles">
+    <h1>+P Holiday Lighting</h1>
+    <p class="sub">Draw your lights on a photo of your house. We’ll review the design and text you a final quote.</p>
+    <p class="sub"><a href="tel:+12149953002">(214) 995-3002</a></p>
+  </div>
+</div>
+
+<div class="card" id="photoCard">
+  <p class="step">Step 1 · Photo</p>
+  <h2>Add a photo of the front of your house</h2>
+  <p class="hint">Take one now or choose one from your camera roll. One photo works best.</p>
+  <div class="file btn" style="margin-top:0">
+    Take a photo
+    <input id="photoCam" type="file" accept="image/*" capture="environment"/>
+  </div>
+  <div class="file btn secondary">
+    Choose a photo
+    <input id="photoLib" type="file" accept="image/*"/>
+  </div>
+  <p class="err hidden" id="photoErr"></p>
+  <p class="hint" style="margin:10px 0 0">Rather just send photos? <a href="customer.html">Request a quote without drawing</a>.</p>
+</div>
+
+<div id="designer" hidden>
+  <div class="card" id="drawCard">
+    <p class="step">Step 2 · Draw</p>
+    <h2>Sketch where you want lights</h2>
+    <p class="hint" id="toolHint">Drag along the roofline, or tap corners and tap Done.</p>
+    <div class="tools" id="tools">
+      <button type="button" class="tool on" id="tool-roofline" data-tool="roofline">Roof</button>
+      <button type="button" class="tool" id="tool-window" data-tool="window">Window</button>
+      <button type="button" class="tool" id="tool-door" data-tool="door">Door</button>
+      <button type="button" class="tool" id="tool-garage" data-tool="garage">Garage</button>
+      <button type="button" class="tool" id="tool-archway" data-tool="archway">Arch</button>
+      <button type="button" class="tool" id="tool-tree" data-tool="tree">Tree</button>
+      <button type="button" class="tool" id="tool-bush" data-tool="bush">Bush</button>
+      <button type="button" class="tool" id="tool-select" data-tool="select">Edit</button>
+    </div>
+    <div class="colors" id="colors"></div>
+    <div class="stage" id="stage">
+      <canvas id="draw" aria-label="Light design canvas"></canvas>
+    </div>
+    <div class="zoomRow">
+      <button type="button" class="mini" id="zoomOut" aria-label="Zoom out">−</button>
+      <button type="button" class="mini" id="zoomFit">Fit</button>
+      <button type="button" class="mini" id="zoomIn" aria-label="Zoom in">+</button>
+      <button type="button" class="mini" id="nightBtn" aria-pressed="false">Night preview</button>
+    </div>
+    <div class="bar">
+      <button type="button" class="mini" id="closeBtn">Close outline</button>
+      <button type="button" class="mini" id="doneBtn" disabled>Done</button>
+      <button type="button" class="mini" id="undoBtn" disabled>Undo</button>
+      <button type="button" class="mini" id="deleteBtn" disabled>Delete</button>
+    </div>
+    <p class="hint" style="margin-top:8px">Pinch to zoom, or use the zoom buttons. Two fingers also pan. Bulbs are a preview of C9-style lights.</p>
+    <ul class="list" id="elementList"></ul>
+  </div>
+
+  <div class="card">
+    <p class="step">Step 3 · Scale</p>
+    <h2>Mark one known width</h2>
+    <p class="hint">Drag across something you know the size of. We use that only to estimate a price range.</p>
+    <label for="scaleRef">Reference</label>
+    <select id="scaleRef">
+      <option value="garage2">2-car garage door (16 ft wide)</option>
+      <option value="garage1">1-car garage door (8 ft wide)</option>
+      <option value="door">Front door (3 ft wide)</option>
+      <option value="custom">Custom width</option>
+    </select>
+    <div id="customWrap" class="hidden">
+      <label for="customFeet">Known width in feet</label>
+      <input id="customFeet" type="number" inputmode="decimal" min="1" max="80" step="0.5" placeholder="16"/>
+    </div>
+    <button type="button" class="btn secondary" id="markScaleBtn" style="margin-top:0">Mark this width on the photo</button>
+    <p class="hint" id="scaleState" style="margin:8px 0 0">Scale not set yet.</p>
+  </div>
+
+  <div class="card" id="estimateCard">
+    <p class="step">Step 4 · Estimated range</p>
+    <h2>Estimated price range</h2>
+    <div id="estimateBody">
+      <p class="hint">Set a scale and draw lights to see an estimated price range.</p>
+    </div>
+    <div class="stepper" id="storageRow">
+      <button type="button" id="tubMinus" aria-label="Fewer storage tubs">−</button>
+      <input id="tubs" type="number" inputmode="numeric" min="0" max="40" step="1" value="0" aria-label="Storage tubs"/>
+      <button type="button" id="tubPlus" aria-label="More storage tubs">+</button>
+    </div>
+    <p class="hint" id="storageHint"></p>
+  </div>
+
+  <div class="card" id="formCard">
+    <p class="step">Step 5 · Send</p>
+    <h2>Where should we text the final quote?</h2>
+    <form id="quoteForm" novalidate>
+      <input type="checkbox" id="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true"/>
+      <div class="row">
+        <div>
+          <label for="firstName">First name</label>
+          <input id="firstName" name="first_name" autocomplete="given-name" required/>
+        </div>
+        <div>
+          <label for="lastName">Last name</label>
+          <input id="lastName" name="last_name" autocomplete="family-name" required/>
+        </div>
+      </div>
+      <label for="phone">Phone</label>
+      <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 555-5555" required/>
+      <label for="street">Street address</label>
+      <input id="street" name="street" autocomplete="street-address" placeholder="123 Main St" required/>
+      <div class="row3">
+        <div>
+          <label for="city">City</label>
+          <input id="city" name="city" autocomplete="address-level2" placeholder="Prosper" required/>
+        </div>
+        <div>
+          <label for="state">State</label>
+          <input id="state" name="state" value="TX" maxlength="2" autocomplete="address-level1"/>
+        </div>
+        <div>
+          <label for="zip">ZIP</label>
+          <input id="zip" name="zip" inputmode="numeric" autocomplete="postal-code" placeholder="75078" required/>
+        </div>
+      </div>
+      <label for="email">Email (optional)</label>
+      <input id="email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com"/>
+      <label for="referredBy">Referred by (optional)</label>
+      <input id="referredBy" name="referred_by" placeholder="A neighbor, Facebook, a friend…"/>
+      <label for="notes">Notes (optional)</label>
+      <textarea id="notes" name="notes" placeholder="Gate code, colors you love, anything we should know…"></textarea>
+      <button class="btn" type="submit" id="submitBtn">Send my design</button>
+      <p class="err hidden" id="formErr"></p>
+      <p class="hint" style="margin-top:10px">Your design goes to +P for approval. We don’t send a quote to you automatically — we’ll text you.</p>
+    </form>
+  </div>
+</div>
+
+<div class="card hidden" id="thanksCard">
+  <p class="ok" id="thanksLead">+P Holiday Lighting will review your design and text you a final quote ASAP.</p>
+  <p class="hint" style="margin:0">Call or text <a class="phone" href="tel:+12149953002">(214) 995-3002</a>.</p>
+</div>
+
+<script src="design-pricing.js?v=35"></script>
+<script src="design.js?v=35"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js?v=35').then(function (reg) {
+      reg.update().catch(function () {});
+    }).catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
