@@ -6,7 +6,7 @@
   var PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
   var WEB3FORMS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
   var LINE_TOOLS = { roofline: 1, window: 1, door: 1, garage: 1, archway: 1 };
-  var CLOSED_BY_DEFAULT = { window: true, door: true, garage: true, archway: true, roofline: false };
+  var OPEN_BOTTOM = { window: 1, door: 1, garage: 1, archway: 1 };
   var TYPE_LABELS = {
     roofline: 'Roofline',
     window: 'Window',
@@ -17,15 +17,30 @@
     bush: 'Bush'
   };
   var HINTS = {
-    roofline: 'Drag along the gutter, or tap each corner and tap Done.',
-    window: 'Outline the window. Close outline connects the ends.',
-    door: 'Outline the door, or drag a line across the trim.',
-    garage: 'Outline the garage door.',
-    archway: 'Outline the arch.',
-    tree: 'Drag from the ground up the trunk. Tap Edit and drag the side dot to match the trunk thickness.',
-    bush: 'Drag across the bush. Width and height set the wrap.',
-    select: 'Tap a design to recolor or delete it. Drag a dot to adjust it.',
-    scale: 'Drag a straight line across the width you picked.'
+    roofline: {
+      straight: 'Tap each bend in the roof. Straight lines connect the taps. Tap Done when it looks right.',
+      freehand: 'Drag your finger along the roof. Lift your finger to finish the curve.'
+    },
+    window: {
+      straight: 'Tap the two top corners, then the two bottom corners, and tap Done. We light the sides and the top, not the sill.',
+      freehand: 'Drag around the sides and the top, then lift your finger. The bottom edge stays dark.'
+    },
+    door: {
+      straight: 'Tap the top corners, then the bottom corners, and tap Done. Lights go up the sides and across the top only.',
+      freehand: 'Drag the sides and the top, then lift. We don’t light across the bottom.'
+    },
+    garage: {
+      straight: 'Tap the top corners of the garage door, then the bottom corners, and tap Done. The bottom stays open.',
+      freehand: 'Drag the sides and the top of the garage door, then lift. The bottom edge is left dark.'
+    },
+    archway: {
+      straight: 'Tap along the curve and down both sides, then tap Done. The bottom stays open.',
+      freehand: 'Drag the curve and the sides, then lift. We won’t put lights across the bottom.'
+    },
+    tree: 'Drag from the ground up the trunk. Tap Edit, then drag the side dot so the trunk thickness matches the tree.',
+    bush: 'Press on the bush and drag across it. That sets how wide and how tall the wrap is.',
+    select: 'Tap a string of lights to change its color or delete it. Drag a white dot to adjust it.',
+    scale: 'Drag a straight line from one side of the garage door or front door to the other.'
   };
   var COLOR_STYLES = {
     warm: ['#ffd7a1'],
@@ -47,7 +62,8 @@
   var selectedId = null;
   var tool = 'roofline';
   var drawTool = 'roofline';
-  var closeShape = false;
+  var lineMode = 'straight';
+  var formFocused = false;
   var currentColor = 'warm';
   var night = false;
   var view = { scale: 1, tx: 0, ty: 0, dpr: 1 };
@@ -111,6 +127,14 @@
     return null;
   }
 
+  function runsOf(el) {
+    if (!el) return [];
+    if (el.runs && el.runs.length) return el.runs;
+    if (el.points && P.litRuns) return P.litRuns(el.points, el.type);
+    if (el.points) return [el.points];
+    return [];
+  }
+
   function treeDiameterPx(el) {
     var px = pxPerFt();
     if (el.diameterMode === 'manual') return el.diameterPx || 12;
@@ -133,7 +157,7 @@
       if (el.type === 'bush') {
         return { type: 'bush', color: el.color, rx: el.rx, ry: el.ry };
       }
-      return { type: el.type, color: el.color, closed: !!el.closed, points: el.points };
+      return { type: el.type, color: el.color, closed: false, points: el.points, runs: el.runs };
     });
   }
 
@@ -208,18 +232,29 @@
     });
   }
 
+  function toolTip(which) {
+    var spec = HINTS[which || tool] || HINTS.roofline;
+    if (typeof spec === 'string') return spec;
+    var mode = lineMode === 'freehand' ? 'freehand' : 'straight';
+    return spec[mode] || spec.straight;
+  }
+
+  function setLineMode(next) {
+    if (next !== 'freehand' && next !== 'straight') return;
+    if (draft && draft.points && draft.points.length >= 2) commitDraft();
+    else if (lineMode !== next) draft = null;
+    lineMode = next;
+    updateToolUi();
+    requestRedraw();
+  }
+
   function setTool(next) {
     if (draft && draft.points && LINE_TOOLS[tool]) {
       if (draft.points.length >= 2) commitDraft();
       else draft = null;
     }
     tool = next;
-    if (LINE_TOOLS[next]) {
-      drawTool = next;
-      closeShape = !!CLOSED_BY_DEFAULT[next];
-    } else if (next === 'tree' || next === 'bush') {
-      drawTool = next;
-    }
+    if (LINE_TOOLS[next] || next === 'tree' || next === 'bush') drawTool = next;
     updateToolUi();
     requestRedraw();
   }
@@ -228,12 +263,19 @@
     document.querySelectorAll('.tool').forEach(function (btn) {
       btn.classList.toggle('on', btn.getAttribute('data-tool') === tool);
     });
-    $('toolHint').textContent = HINTS[tool] || HINTS.roofline;
-    var line = !!LINE_TOOLS[tool];
-    $('closeBtn').classList.toggle('hidden', !line);
-    $('closeBtn').classList.toggle('on', line && closeShape);
-    $('closeBtn').setAttribute('aria-pressed', closeShape ? 'true' : 'false');
-    $('closeBtn').textContent = closeShape ? 'Close outline on' : 'Close outline';
+    var tip = toolTip();
+    $('toolHint').textContent = tip;
+    if ($('modeStraight')) $('modeStraight').classList.toggle('on', lineMode === 'straight');
+    if ($('modeFreehand')) $('modeFreehand').classList.toggle('on', lineMode === 'freehand');
+    if ($('modeHint')) {
+      $('modeHint').textContent = lineMode === 'freehand'
+        ? 'Drag to draw a curve. Lift your finger to finish. Undo removes that stroke.'
+        : 'Tap each point. Straight lines connect them. Tap Done to finish. Undo removes the last tap.';
+    }
+    var showModes = !!LINE_TOOLS[tool];
+    if ($('lineModes')) $('lineModes').classList.toggle('hidden', !showModes);
+    if ($('modeHint')) $('modeHint').classList.toggle('hidden', !showModes);
+    $('closeBtn').classList.add('hidden');
     $('markScaleBtn').textContent = tool === 'scale' ? 'Marking… drag across the width' : 'Mark this width on the photo';
     syncChrome();
   }
@@ -242,10 +284,43 @@
     var canUndo = (draft && draft.points && draft.points.length) || undoStack.length > 0;
     $('undoBtn').disabled = !canUndo;
     $('deleteBtn').disabled = !selectedId;
-    $('doneBtn').disabled = !(draft && draft.points && draft.points.length >= 2);
+    var straightDraft = lineMode === 'straight' && !!LINE_TOOLS[tool];
+    $('doneBtn').classList.toggle('hidden', !straightDraft);
+    $('doneBtn').disabled = !(straightDraft && draft && draft.points && draft.points.length >= 2);
     if (pxPerFt() > 0) $('scaleState').textContent = 'Scale set.';
     else if (tool === 'scale') $('scaleState').textContent = 'Drag across the reference on the photo.';
     else $('scaleState').textContent = 'Scale not set yet.';
+    updateGuide();
+  }
+
+  function updateGuide() {
+    var step = 1;
+    if (!photo) step = 1;
+    else if (!(pxPerFt() > 0) || tool === 'scale') step = 2;
+    else if (!elements.length) step = 3;
+    else if (formFocused) step = 5;
+    else step = 4;
+    var titles = [
+      'Add a photo of the front of your house',
+      'Mark something you know the width of',
+      'Pick a tool and a color, then trace your lights',
+      'Review your estimate',
+      'Enter your info and send'
+    ];
+    var tips = [
+      'Tap Take a photo or Choose a photo. A straight-on picture of the front works best.',
+      'Choose a garage door or the front door, then drag across it on the photo.',
+      toolTip() + ' Undo takes back the last tap or stroke. Pinch, or use + and −, to zoom.',
+      toolTip() + ' Scroll down for the price range. It’s an estimate until we review it.',
+      'Add your name, phone, and address, then tap Send my design. We’ll text you. Nothing is emailed to you.'
+    ];
+    if ($('stepLabel')) $('stepLabel').textContent = 'Step ' + step + ' of 5';
+    if ($('stepTitle')) $('stepTitle').textContent = titles[step - 1];
+    if ($('stepTip')) $('stepTip').textContent = tips[step - 1];
+    for (var i = 1; i <= 5; i++) {
+      var li = $('guide' + i);
+      if (li) li.classList.toggle('now', i === step);
+    }
   }
 
   function renderList() {
@@ -601,12 +676,13 @@
       return;
     }
     var cord = nightMode ? 'rgba(214,224,206,0.45)' : 'rgba(18,36,22,0.8)';
-    strokePath(ctx, el.points, !!el.closed, selected ? '#e8b84a' : cord, uiPx(selected ? 3 : 2.2, interactive));
-    var polyPts = el.points || [];
-    drawBulbs(ctx, bulbsAlong(polyPts, !!el.closed, spacingFor(el.type, interactive)), el.color, nightMode, interactive);
-    if (selected && interactive) {
-      polyPts.forEach(function (p) { drawHandle(ctx, p.x, p.y, true); });
-    }
+    var runs = runsOf(el);
+    var spacing = spacingFor(el.type, interactive);
+    runs.forEach(function (run) {
+      strokePath(ctx, run, false, selected ? '#e8b84a' : cord, uiPx(selected ? 3 : 2.2, interactive));
+      drawBulbs(ctx, bulbsAlong(run, false, spacing), el.color, nightMode, interactive);
+      if (selected && interactive) run.forEach(function (p) { drawHandle(ctx, p.x, p.y, true); });
+    });
   }
 
   function drawGesture(ctx, nightMode) {
@@ -621,10 +697,15 @@
       ctx.stroke();
       ctx.restore();
     } else if (gesture.mode === 'poly') {
-      var pts = gesture.moved ? gesture.kept.slice() : null;
-      if (!pts && draft && draft.points.length && gesture.cursor) pts = draft.points.concat([gesture.cursor]);
-      if (!pts && gesture.cursor) pts = [gesture.start, gesture.cursor];
-      if (pts && pts.length >= 2) strokePath(ctx, pts, false, '#e8b84a', uiPx(2.5, true));
+      if (lineMode === 'freehand') {
+        if (gesture.kept && gesture.kept.length >= 2) strokePath(ctx, gesture.kept, false, '#e8b84a', uiPx(2.5, true));
+      } else {
+        var base = (draft && draft.type === tool && draft.points && draft.points.length) ? draft.points : [gesture.start];
+        var preview = base.slice();
+        if (gesture.cursor) preview.push(gesture.cursor);
+        if (preview.length >= 2) strokePath(ctx, preview, false, '#e8b84a', uiPx(2.5, true));
+        if (draft && draft.points) draft.points.forEach(function (p) { drawHandle(ctx, p.x, p.y, true); });
+      }
     }
   }
 
@@ -704,10 +785,13 @@
 
   function hitHandles(el, ip, handleR) {
     if (!el) return null;
-    if (el.points) {
-      for (var i = 0; i < el.points.length; i++) {
-        if (Math.hypot(el.points[i].x - ip.x, el.points[i].y - ip.y) <= handleR) {
-          return { id: el.id, part: 'vertex', index: i };
+    if (el.points || (el.runs && el.runs.length)) {
+      var runs = runsOf(el);
+      for (var r = 0; r < runs.length; r++) {
+        for (var i = 0; i < runs[r].length; i++) {
+          if (Math.hypot(runs[r][i].x - ip.x, runs[r][i].y - ip.y) <= handleR) {
+            return { id: el.id, part: 'vertex', index: i, run: r };
+          }
         }
       }
     } else if (el.type === 'tree') {
@@ -724,12 +808,14 @@
   }
 
   function elementHits(el, ip, bodyR) {
-    if (el.points && el.points.length >= 2) {
-      var pts = el.points;
-      for (var i = 1; i < pts.length; i++) {
-        if (distToSeg(ip, pts[i - 1], pts[i]) <= bodyR) return true;
+    if (el.points || (el.runs && el.runs.length)) {
+      var runs = runsOf(el);
+      for (var r = 0; r < runs.length; r++) {
+        var pts = runs[r];
+        for (var i = 1; i < pts.length; i++) {
+          if (distToSeg(ip, pts[i - 1], pts[i]) <= bodyR) return true;
+        }
       }
-      if (el.closed && pts.length > 2 && distToSeg(ip, pts[pts.length - 1], pts[0]) <= bodyR) return true;
       return false;
     }
     if (el.type === 'tree') {
@@ -760,14 +846,20 @@
     var el = elementById(hit.id);
     if (!el) return;
     if (hit.part === 'move') {
-      if (el.points) el.points.forEach(function (p) { p.x += dx; p.y += dy; });
+      if (el.runs && el.runs.length) {
+        el.runs.forEach(function (run) { run.forEach(function (p) { p.x += dx; p.y += dy; }); });
+      } else if (el.points) el.points.forEach(function (p) { p.x += dx; p.y += dy; });
       else if (el.type === 'tree') { el.x1 += dx; el.y1 += dy; el.x2 += dx; el.y2 += dy; }
       else if (el.type === 'bush') { el.cx += dx; el.cy += dy; }
       return;
     }
-    if (hit.part === 'vertex' && el.points[hit.index]) {
-      el.points[hit.index].x += dx;
-      el.points[hit.index].y += dy;
+    if (hit.part === 'vertex') {
+      var runs = runsOf(el);
+      var run = runs[hit.run || 0];
+      if (run && run[hit.index]) {
+        run[hit.index].x += dx;
+        run[hit.index].y += dy;
+      }
       return;
     }
     if (hit.part === 'p1') { el.x1 += dx; el.y1 += dy; return; }
@@ -808,7 +900,48 @@
     return [{ x: first.x, y: first.y }, { x: last.x, y: last.y }];
   }
 
-  function commitPolyline(pts, closed) {
+  function smoothFreehand(points) {
+    if (!points || points.length < 3) return (points || []).map(function (p) { return { x: p.x, y: p.y }; });
+    var src = points.map(function (p) { return { x: p.x, y: p.y }; });
+    for (var pass = 0; pass < 2; pass++) {
+      var next = [src[0]];
+      for (var i = 1; i < src.length - 1; i++) {
+        next.push({
+          x: src[i - 1].x * 0.25 + src[i].x * 0.5 + src[i + 1].x * 0.25,
+          y: src[i - 1].y * 0.25 + src[i].y * 0.5 + src[i + 1].y * 0.25
+        });
+      }
+      next.push(src[src.length - 1]);
+      src = next;
+    }
+    return rdp(src, 3.5);
+  }
+
+  function storeLine(points, type, mode) {
+    var runs = P.litRuns ? P.litRuns(points, type) : [points];
+    var length = 0;
+    runs.forEach(function (run) { length += P.polylineLength(run, false); });
+    if (length < 8 || !runs.length) {
+      syncChrome();
+      requestRedraw();
+      return;
+    }
+    pushUndo();
+    var el = {
+      id: uid(),
+      type: type,
+      color: currentColor,
+      closed: false,
+      points: runs[0],
+      runs: runs,
+      drawMode: mode || lineMode
+    };
+    elements.push(el);
+    selectedId = el.id;
+    syncUi();
+  }
+
+  function commitPolyline(pts) {
     var points = pts.map(function (p) { return { x: p.x, y: p.y }; });
     if (draft && draft.type === tool && draft.points && draft.points.length) {
       var end = draft.points[draft.points.length - 1];
@@ -817,45 +950,25 @@
       }
       draft = null;
     }
-    if (P.polylineLength(points, closed) < 8) {
-      syncChrome();
-      requestRedraw();
-      return;
-    }
-    pushUndo();
-    var el = { id: uid(), type: tool, color: currentColor, closed: !!closed, points: points };
-    elements.push(el);
-    selectedId = el.id;
-    syncUi();
+    storeLine(points, tool, lineMode);
   }
 
   function commitDraft() {
     if (!draft || !draft.points || draft.points.length < 2) return;
-    var closed = !!closeShape;
     var points = draft.points.map(function (p) { return { x: p.x, y: p.y }; });
     var type = draft.type || tool;
     draft = null;
-    if (P.polylineLength(points, closed) < 8) {
-      syncChrome();
-      requestRedraw();
-      return;
-    }
-    pushUndo();
-    var el = { id: uid(), type: type, color: currentColor, closed: closed, points: points };
-    elements.push(el);
-    selectedId = el.id;
-    syncUi();
+    storeLine(points, type, 'straight');
   }
 
   function addDraftPoint(p) {
     if (!draft || draft.type !== tool) draft = { type: tool, color: currentColor, points: [] };
     draft.color = currentColor;
-    if (draft.points.length >= 3 && closeShape) {
-      var a = draft.points[0];
-      if (Math.hypot(a.x - p.x, a.y - p.y) < uiPx(22, true)) {
-        commitDraft();
-        return;
-      }
+    var last = draft.points.length ? draft.points[draft.points.length - 1] : null;
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 3) {
+      syncChrome();
+      requestRedraw();
+      return;
     }
     draft.points.push({ x: p.x, y: p.y });
     syncChrome();
@@ -955,9 +1068,11 @@
     }
     if (gesture.mode === 'poly') {
       gesture.cursor = { x: ip.x, y: ip.y };
-      var last = gesture.kept[gesture.kept.length - 1];
-      if (Math.hypot(ip.x - last.x, ip.y - last.y) >= 10) gesture.kept.push({ x: ip.x, y: ip.y });
-      if (Math.hypot(ip.x - gesture.start.x, ip.y - gesture.start.y) > 8) gesture.moved = true;
+      if (lineMode === 'freehand') {
+        var last = gesture.kept[gesture.kept.length - 1];
+        if (Math.hypot(ip.x - last.x, ip.y - last.y) >= 6) gesture.kept.push({ x: ip.x, y: ip.y });
+        if (Math.hypot(ip.x - gesture.start.x, ip.y - gesture.start.y) > 8) gesture.moved = true;
+      }
       requestRedraw();
     }
   }
@@ -1019,11 +1134,14 @@
       return;
     }
     if (gesture.mode === 'poly') {
-      if (!gesture.moved) addDraftPoint(gesture.start);
-      else {
-        var pts = rdp(gesture.kept, 5);
-        if (pts.length >= 2) commitPolyline(pts, closeShape);
+      if (lineMode === 'freehand') {
+        if (gesture.moved) {
+          var curved = smoothFreehand(gesture.kept);
+          if (curved.length >= 2 && P.polylineLength(curved, false) >= 12) commitPolyline(curved);
+        }
+        return;
       }
+      addDraftPoint(gesture.cursor || gesture.start);
     }
   }
 
@@ -1332,6 +1450,7 @@
       pricingInput: function () {
         return { pxPerFt: pxPerFt(), tubs: tubCount(), elements: pricingElements() };
       },
+      get lineMode() { return lineMode; },
       get elements() { return elements; },
       get view() { return { scale: view.scale, tx: view.tx, ty: view.ty }; }
     };
@@ -1350,9 +1469,18 @@
     document.querySelectorAll('.tool').forEach(function (btn) {
       btn.addEventListener('click', function () { setTool(btn.getAttribute('data-tool')); });
     });
-    $('closeBtn').addEventListener('click', function () {
-      closeShape = !closeShape;
-      updateToolUi();
+    $('modeStraight').addEventListener('click', function () { setLineMode('straight'); });
+    $('modeFreehand').addEventListener('click', function () { setLineMode('freehand'); });
+    $('quoteForm').addEventListener('focusin', function () {
+      formFocused = true;
+      updateGuide();
+    });
+    $('quoteForm').addEventListener('focusout', function () {
+      setTimeout(function () {
+        var active = document.activeElement;
+        formFocused = !!(active && active.closest && active.closest('#quoteForm'));
+        updateGuide();
+      }, 0);
     });
     $('doneBtn').addEventListener('click', function () { commitDraft(); });
     $('undoBtn').addEventListener('click', undoLast);

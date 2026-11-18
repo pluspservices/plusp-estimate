@@ -98,18 +98,42 @@ test('linear footage is summed before rounding', () => {
   assert.equal(est.low, 109);
 });
 
-test('closed outlines include the return edge', () => {
-  const est = api.buildEstimate({
-    pxPerFt: 10,
-    elements: [{
-      type: 'window',
-      closed: true,
-      points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }]
-    }]
-  });
-  // perimeter 300 px = 30 ft × 1.075 × $6 = 193.5 → $194
-  assert.equal(est.categories[0].lengthFt, 30);
-  assert.equal(est.low, 194);
+test('window, door, garage, and arch outlines leave the bottom edge dark', () => {
+  const rect = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 0, y: 50 }];
+  // Full perimeter would be 30 ft. Lit edges are left + top + right = 20 ft.
+  for (const type of ['window', 'door', 'garage']) {
+    const runs = api.litRuns(rect, type);
+    assert.equal(runs.length, 1);
+    assert.equal(api.litLengthPx(rect, type), 200);
+    const again = api.litRuns(runs[0], type);
+    assert.equal(api.polylineLength(again[0], false), 200);
+    const est = api.buildEstimate({ pxPerFt: 10, elements: [{ type, closed: true, points: rect }] });
+    assert.equal(est.categories[0].lengthFt, 20);
+    // 20 ft × 1.075 × $6 = 129
+    assert.equal(est.low, 129);
+    assert.match(api.ownerReport(est), /bottom left dark/);
+  }
+
+  const arch = [{ x: 0, y: 50 }, { x: 25, y: 10 }, { x: 50, y: 0 }, { x: 75, y: 10 }, { x: 100, y: 50 }];
+  const archLen = api.litLengthPx(arch, 'archway');
+  const withSill = api.polylineLength(arch, true);
+  assert.ok(withSill > archLen + 50, 'arch price must drop the bottom chord');
+  assert.ok(Math.abs(archLen - (
+    Math.hypot(25, 40) + Math.hypot(25, 10) + Math.hypot(25, 10) + Math.hypot(25, 40)
+  )) < 0.01);
+
+  // An open U is already sides + top. Stripping must not shorten it.
+  const u = [{ x: 0, y: 50 }, { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }];
+  assert.equal(api.litLengthPx(u, 'window'), 200);
+
+  // A single top line stays intact.
+  const top = [{ x: 0, y: 0 }, { x: 100, y: 0 }];
+  assert.equal(api.litLengthPx(top, 'garage'), 100);
+
+  // Rooflines keep every segment, including a closed shape.
+  const roof = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 40 }, { x: 0, y: 40 }];
+  assert.equal(api.litLengthPx(roof, 'roofline'), api.polylineLength(roof, false));
+  assert.equal(api.litRuns(roof, 'roofline').length, 1);
 });
 
 test('bushes and trees from pixel geometry, plus storage and included work', () => {

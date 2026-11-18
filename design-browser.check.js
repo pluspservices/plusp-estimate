@@ -162,6 +162,22 @@ async function drag(page, x1, y1, x2, y2) {
   await settle(page);
 }
 
+async function curve(page, pts) {
+  await page.evaluate(() => document.getElementById('stage').scrollIntoView({ block: 'center', inline: 'nearest' }));
+  await settle(page);
+  const screen = [];
+  for (const [x, y] of pts) {
+    screen.push(await page.evaluate((ix, iy) => window.__plusp.screenFromImage(ix, iy), x, y));
+  }
+  await page.mouse.move(screen[0].x, screen[0].y);
+  await page.mouse.down();
+  for (let i = 1; i < screen.length; i++) {
+    await page.mouse.move(screen[i].x, screen[i].y, { steps: 8 });
+  }
+  await page.mouse.up();
+  await settle(page);
+}
+
 async function pickColor(page, label) {
   await page.evaluate((name) => {
     const btn = [...document.querySelectorAll('.swatch')].find((el) => el.textContent.indexOf(name) !== -1);
@@ -177,7 +193,7 @@ async function run() {
   assert.match(customer, /action:\s*'lead'/);
   assert.match(customer, /AKfycbzbvvFGqolPI0zKlmWQhngCW/);
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-  assert.match(sw, /plusp-estimate-v35/);
+  assert.match(sw, /plusp-estimate-v36/);
   assert.match(sw, /design\.html/);
 
   const house = path.join(SHOTS, 'sample-house.png');
@@ -198,6 +214,15 @@ async function run() {
   });
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   await page.goto(origin + '/design.html', { waitUntil: 'networkidle0' });
+  const guideText = await page.$eval('#howItWorks', (el) => el.innerText);
+  assert.match(guideText, /Take or upload a picture of the front of your house/);
+  assert.match(guideText, /garage door or the front door/i);
+  assert.match(guideText, /Pick a tool and a color/);
+  assert.match(guideText, /Check the price range/);
+  assert.match(guideText, /Enter your info and send/);
+  const banner = await page.$eval('#stepBanner', (el) => el.innerText);
+  assert.match(banner, /step 1 of 5/i);
+  await (await page.$('#guideWrap')).screenshot({ path: path.join(SHOTS, 'design_instructions.png') });
   const input = await page.$('#photoLib');
   await input.uploadFile(house);
   await page.waitForFunction(() => window.__plusp && window.__plusp.ready);
@@ -230,6 +255,63 @@ async function run() {
   await tap(page, 700, 700);
   await page.click('#doneBtn');
 
+  await page.click('#tool-garage');
+  await tap(page, 100, 470);
+  await tap(page, 420, 470);
+  await tap(page, 420, 700);
+  await tap(page, 100, 700);
+  await page.click('#doneBtn');
+  const garageShape = await page.evaluate(() => {
+    const el = window.__plusp.elements.filter((item) => item.type === 'garage').pop();
+    const run = (el.runs && el.runs[0]) || el.points;
+    const ys = run.map((p) => p.y);
+    const maxY = Math.max.apply(null, ys);
+    const minY = Math.min.apply(null, ys);
+    const ends = [run[0], run[run.length - 1]];
+    const lit = window.PlusPPricing.polylineLength(run, false);
+    const withBottom = window.PlusPPricing.polylineLength(run, true);
+    return {
+      openEndsLow: ends.every((p) => p.y >= maxY - 8),
+      hasTop: minY < maxY - 40,
+      lit: lit,
+      withBottom: withBottom
+    };
+  });
+  assert.equal(garageShape.openEndsLow, true, 'garage outline should end on the bottom corners');
+  assert.equal(garageShape.hasTop, true);
+  assert.ok(garageShape.withBottom > garageShape.lit + 40, 'bottom edge must be omitted from the garage length');
+  await page.evaluate(() => document.getElementById('stage').scrollIntoView({ block: 'center' }));
+  await settle(page);
+  await (await page.$('#stage')).screenshot({ path: path.join(SHOTS, 'design_garage_open_bottom.png') });
+
+  await page.click('#modeFreehand');
+  await page.click('#tool-roofline');
+  await curve(page, [[160, 760], [280, 700], [420, 680], [560, 710], [700, 760]]);
+  const freehand = await page.evaluate(() => {
+    const el = window.__plusp.elements.filter((item) => item.drawMode === 'freehand').pop();
+    if (!el) return null;
+    const pts = el.points;
+    const a = pts[0];
+    const b = pts[pts.length - 1];
+    let off = 0;
+    for (const p of pts) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const dist = Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
+      if (dist > off) off = dist;
+    }
+    return { count: pts.length, off: off, mode: el.drawMode };
+  });
+  assert.ok(freehand, 'freehand stroke was not saved');
+  assert.equal(freehand.mode, 'freehand');
+  assert.ok(freehand.count >= 4, 'freehand path should keep the curve');
+  assert.ok(freehand.off > 12, 'freehand path should not collapse to a straight line');
+  await page.evaluate(() => document.getElementById('stage').scrollIntoView({ block: 'center' }));
+  await settle(page);
+  await (await page.$('#stage')).screenshot({ path: path.join(SHOTS, 'design_freehand_curve.png') });
+
+  await page.click('#modeStraight');
   await pickColor(page, 'Warm white');
   await page.click('#tool-tree');
   await drag(page, 1060, 700, 1060, 500);
@@ -255,7 +337,7 @@ async function run() {
   console.log('types', drawn.types.join(','));
   console.log('estimate', drawn.low, drawn.high);
   console.log(drawn.text);
-  assert.deepEqual(drawn.types, ['roofline', 'window', 'door', 'tree', 'bush']);
+  assert.deepEqual(drawn.types, ['roofline', 'window', 'door', 'garage', 'roofline', 'tree', 'bush']);
   const expected = pricing.buildEstimate(drawn.input);
   assert.equal(expected.ready, true);
   assert.equal(drawn.low, expected.low);
@@ -298,13 +380,25 @@ async function run() {
 
   const beforeUndo = await page.evaluate(() => window.__plusp.elements.length);
   await page.click('#tool-roofline');
-  await drag(page, 80, 360, 400, 360);
+  await page.click('#modeStraight');
+  await tap(page, 90, 360);
+  await tap(page, 280, 360);
+  await page.click('#doneBtn');
   const midUndo = await page.evaluate(() => window.__plusp.elements.length);
   assert.equal(midUndo, beforeUndo + 1);
   await page.click('#undoBtn');
   await settle(page);
   const afterUndo = await page.evaluate(() => window.__plusp.elements.length);
   assert.equal(afterUndo, beforeUndo);
+  await page.click('#modeFreehand');
+  await page.click('#tool-roofline');
+  await curve(page, [[100, 640], [180, 600], [260, 640]]);
+  const midFree = await page.evaluate(() => window.__plusp.elements.length);
+  assert.equal(midFree, beforeUndo + 1);
+  await page.click('#undoBtn');
+  await settle(page);
+  const afterFree = await page.evaluate(() => window.__plusp.elements.length);
+  assert.equal(afterFree, beforeUndo);
 
   await page.evaluate(() => {
     window.__sent = null;
