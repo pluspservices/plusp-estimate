@@ -4,23 +4,25 @@
  * DEPLOY (keeps the same web app URL the website already posts to)
  * 1. Open the Apps Script project bound to the +P Client Tracker spreadsheet.
  * 2. Open Code.gs, select all, delete, paste this entire file, and save.
- * 3. In the function dropdown choose authorizeMailPermission and click Run.
- *    Approve "Send email as you". Check pluspservices@gmail.com for
- *    "+P mail permission check" (look in spam the first time).
- * 4. Deploy → Manage deployments → pencil on the existing Web app →
+ * 3. Deploy → Manage deployments → pencil on the existing Web app →
  *    Version: New version → Deploy.
  *    Do not use New deployment. That would change the URL.
  *    Execute as: Me. Who has access: Anyone.
+ *    If you already ran authorizeMailPermission on 11/18, do not run it again.
  *
  * design.html posts action "lead" with the original photo in photos[],
  * plus design_image (JPEG of the lights), owner_estimate (footage for Erik),
  * estimate_low / estimate_high, and source "design form".
  * This script saves both images in the lead folder, writes design-estimate.txt,
- * adds the Client Tracker row, and emails pluspservices@gmail.com with the
- * images attached. customer.html leads (no design_image) are unchanged and
- * still do not send this mail — that page emails through Web3Forms.
+ * adds a Pipeline row AND a Client List row ("Awaiting Quote"), and emails
+ * pluspservices@gmail.com with both images attached.
+ * customer.html leads (no design_image) still do not send this mail.
+ *
+ * PROSPECTS_SHEET_ID is +P Client Tracker 2026.
+ * The old "+P Prospects" file (1lRYPaL2TR1YM1zj5A983FUMdOq74OKo_z3V4CTI84Tk)
+ * is the wrong spreadsheet. Do not put that id back.
  */
-var PROSPECTS_SHEET_ID = '1lRYPaL2TR1YM1zj5A983FUMdOq74OKo_z3V4CTI84Tk';
+var PROSPECTS_SHEET_ID = '1c4i2baYHHj2Ck8pGkq1ddoTiAC89FF4Jt2AfxbKjIKk';
 var LEAD_PHOTOS_FOLDER_ID = '1c2sHhFctt5DU9ZSOOqfB5-plMKeoNyu6';
 var QUOTES_FOLDER_ID = '1JPLVPb0qwDYKwaKPu86Hdo3jgQZhrj9x';
 var LOGO_FILE_ID = '1idksk7mIhRdB0dpoQ7xc0S5W3bS2i7Un';
@@ -127,6 +129,19 @@ function handleLead(data) {
     notes, saved, folder.getUrl(), lowCell, '', '', stamp, source
   ]);
 
+  var clientListError = '';
+  try {
+    appendClientList_({
+      first_name: first,
+      last_name: last,
+      phone: phone,
+      street: street,
+      city: city
+    });
+  } catch (listErr) {
+    clientListError = String(listErr && listErr.message ? listErr.message : listErr);
+  }
+
   return {
     ok: true,
     prospectId: id,
@@ -135,8 +150,43 @@ function handleLead(data) {
     sheetUrl: 'https://docs.google.com/spreadsheets/d/' + PROSPECTS_SHEET_ID + '/edit',
     emailSent: emailSent,
     emailError: emailError,
-    designSaveError: designSaveError
+    designSaveError: designSaveError,
+    clientListError: clientListError
   };
+}
+
+function clientListSheet_() {
+  var ss = SpreadsheetApp.openById(PROSPECTS_SHEET_ID);
+  var sh = ss.getSheetByName('Client List');
+  if (!sh) throw new Error('Client List tab not found on +P Client Tracker');
+  return sh;
+}
+
+function splitStreet_(street) {
+  var s = clean_(street);
+  var m = s.match(/^(\d+)\s+([\s\S]+)$/);
+  if (!m) return { number: '', name: s };
+  return { number: m[1], name: clean_(m[2]) };
+}
+
+function phoneWithDots_(phone) {
+  var d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 11 && d.charAt(0) === '1') d = d.substring(1);
+  if (d.length === 10) return d.substring(0, 3) + '.' + d.substring(3, 6) + '.' + d.substring(6);
+  return clean_(phone);
+}
+
+function appendClientList_(data) {
+  var parts = splitStreet_(data.street);
+  clientListSheet_().appendRow([
+    'Awaiting Quote',
+    clean_(data.first_name),
+    clean_(data.last_name),
+    phoneWithDots_(data.phone),
+    parts.number,
+    parts.name,
+    clean_(data.city)
+  ]);
 }
 
 function isDesignPhoto_(p) {

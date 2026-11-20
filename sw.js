@@ -1,11 +1,11 @@
-const CACHE = 'plusp-estimate-v35';
+const CACHE = 'plusp-estimate-v37';
 const ASSETS = [
   './',
   './index.html',
   './customer.html',
   './design.html',
-  './design.js?v=35',
-  './design-pricing.js?v=35',
+  './design.js?v=37',
+  './design-pricing.js?v=37',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',

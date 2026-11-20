@@ -64,6 +64,8 @@
   };
 
   var GLUE_TYPES = { window: 1, door: 1, garage: 1, archway: 1 };
+  // Windows are a full rectangle. Doors, garages, and arches leave the bottom dark.
+  var OPEN_BOTTOM = { door: 1, garage: 1, archway: 1 };
 
   function padFactor() {
     return 1 + Number(PRICING.footagePad || 0);
@@ -111,6 +113,107 @@
       var gap = Math.hypot(a.x - b.x, a.y - b.y);
       if (gap > 0.5) len += gap;
     }
+    return len;
+  }
+
+  function copyPt(p) { return { x: p.x, y: p.y }; }
+
+  function samePt(a, b) {
+    return Math.abs(a.x - b.x) < 0.05 && Math.abs(a.y - b.y) < 0.05;
+  }
+
+  /**
+   * Windows are lit on all four sides (full perimeter).
+   * Doors, garages, and arches are lit on the sides and top only.
+   * Rooflines are unchanged. Safe to call again on its own result.
+   */
+  function litRuns(points, type) {
+    if (!points || points.length < 2) return [];
+    var pts = points.map(copyPt);
+    if (type === 'window' && pts.length >= 3) return [closeLoop(pts)];
+    if (!OPEN_BOTTOM[type] || pts.length < 3) return [pts];
+    return stripBottomEdge(pts);
+  }
+
+  function closeLoop(points) {
+    var pts = points.map(copyPt);
+    var a = pts[0];
+    var b = pts[pts.length - 1];
+    if (Math.hypot(a.x - b.x, a.y - b.y) > 0.5) pts.push(a);
+    return pts;
+  }
+
+  function stripBottomEdge(points) {
+    var minY = Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].y < minY) minY = points[i].y;
+      if (points[i].y > maxY) maxY = points[i].y;
+    }
+    var height = maxY - minY;
+    if (!(height > 8)) return [points.map(copyPt)];
+
+    var segs = [];
+    for (var s = 1; s < points.length; s++) segs.push([points[s - 1], points[s]]);
+    var first = points[0];
+    var last = points[points.length - 1];
+    var syntheticClose = Math.hypot(first.x - last.x, first.y - last.y) > 0.5;
+    if (syntheticClose) segs.push([last, first]);
+
+    var threshold = minY + height * 0.62;
+    var drop = [];
+    var any = false;
+    for (var k = 0; k < segs.length; k++) {
+      var a = segs[k][0];
+      var b = segs[k][1];
+      var dx = Math.abs(b.x - a.x);
+      var dy = Math.abs(b.y - a.y);
+      var midY = (a.y + b.y) / 2;
+      var horizontal = dx + 0.01 >= dy * 0.85 && dx > 3;
+      var low = midY >= threshold && Math.min(a.y, b.y) >= minY + height * 0.45;
+      drop[k] = !!(horizontal && low);
+      if (drop[k]) any = true;
+    }
+    if (!any) return [points.map(copyPt)];
+
+    var runs = chainOpenSegments(segs, drop);
+    if (!runs.length) return [points.map(copyPt)];
+    return runs;
+  }
+
+  function chainOpenSegments(segs, drop) {
+    var used = [];
+    var runs = [];
+    for (var i = 0; i < segs.length; i++) {
+      if (drop[i] || used[i]) continue;
+      var run = [copyPt(segs[i][0]), copyPt(segs[i][1])];
+      used[i] = true;
+      var guard = 0;
+      var grew = true;
+      while (grew && guard < segs.length + 2) {
+        grew = false;
+        guard++;
+        for (var j = 0; j < segs.length; j++) {
+          if (drop[j] || used[j]) continue;
+          var s0 = segs[j][0];
+          var s1 = segs[j][1];
+          var start = run[0];
+          var end = run[run.length - 1];
+          if (samePt(s0, end)) { run.push(copyPt(s1)); used[j] = true; grew = true; }
+          else if (samePt(s1, end)) { run.push(copyPt(s0)); used[j] = true; grew = true; }
+          else if (samePt(s1, start)) { run.unshift(copyPt(s0)); used[j] = true; grew = true; }
+          else if (samePt(s0, start)) { run.unshift(copyPt(s1)); used[j] = true; grew = true; }
+        }
+      }
+      if (run.length >= 2) runs.push(run);
+    }
+    return runs;
+  }
+
+  function litLengthPx(points, type) {
+    var runs = litRuns(points, type);
+    var len = 0;
+    for (var i = 0; i < runs.length; i++) len += polylineLength(runs[i], false);
     return len;
   }
 
@@ -300,14 +403,22 @@
         price: bushPriced.price
       };
     }
-    var lengthPx = polylineLength(el.points, !!el.closed);
+    var sourcePts = (el.runs && el.runs.length) ? null : (el.points || []);
+    var lengthPx = 0;
+    if (el.runs && el.runs.length) {
+      for (var ri = 0; ri < el.runs.length; ri++) lengthPx += polylineLength(el.runs[ri], false);
+    } else {
+      lengthPx = litLengthPx(sourcePts, el.type);
+    }
     var lengthFt = lengthPx / pxPerFt;
     if (!(lengthFt > 0)) return null;
     return {
       kind: el.type,
       color: el.color || 'warm',
       lengthFt: lengthFt,
-      closed: !!el.closed
+      closed: false,
+      openBottom: !!OPEN_BOTTOM[el.type] && (el.points || []).length >= 3,
+      fullOutline: el.type === 'window' && (el.points || []).length >= 3
     };
   }
 
@@ -399,7 +510,9 @@
     if (item.kind === 'bush') {
       return 'width ' + feetLabel(item.widthFt) + ', height ' + feetLabel(item.heightFt) + ', circumference ' + feetLabel(item.circFt) + ' (π × width), lights ' + feetLabel(item.lightsFt) + ' = circumference × height × 12 / ' + PRICING.bushSpacingIn + ', with pad ' + feetLabel(item.paddedFt) + ', ' + item.balls + ' ball' + (item.balls === 1 ? '' : 's') + ' × ' + money(PRICING.ballPrice) + ' = ' + money(item.price);
     }
-    return (item.closed ? 'outline ' : 'line ') + feetLabel(item.lengthFt);
+    if (item.openBottom) return 'sides and top only (bottom left dark) ' + feetLabel(item.lengthFt);
+    if (item.fullOutline) return 'full outline ' + feetLabel(item.lengthFt);
+    return 'line ' + feetLabel(item.lengthFt);
   }
 
   return {
@@ -407,11 +520,14 @@
     COLOR_LABELS: COLOR_LABELS,
     CATEGORY_LABELS: CATEGORY_LABELS,
     GLUE_TYPES: GLUE_TYPES,
+    OPEN_BOTTOM: OPEN_BOTTOM,
     money: money,
     formatRange: formatRange,
     feetLabel: feetLabel,
     colorLabel: colorLabel,
     polylineLength: polylineLength,
+    litRuns: litRuns,
+    litLengthPx: litLengthPx,
     bushLightsFt: bushLightsFt,
     treeLightsFt: treeLightsFt,
     priceLights: priceLights,
