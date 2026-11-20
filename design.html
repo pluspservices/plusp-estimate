@@ -80,6 +80,9 @@ button.mini.on{background:var(--accent);color:#1a1200;border-color:var(--accent)
 .banner-tip{font-size:.92rem;line-height:1.4;margin:0}
 .modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 8px}
 .modes button{margin:0;min-height:44px;line-height:1.2}
+.scale-help{display:flex;gap:10px;align-items:center;background:#0f1419;border:1px solid var(--line);border-radius:12px;padding:10px;margin:0 0 10px}
+.scale-help svg{width:132px;height:78px;flex-shrink:0}
+.scale-help p{margin:0;font-size:.86rem;line-height:1.35}
 </style>
 </head>
 <body>
@@ -97,7 +100,7 @@ button.mini.on{background:var(--accent);color:#1a1200;border-color:var(--accent)
     <summary>How it works</summary>
     <ol class="guide" id="guideList">
       <li id="guide1"><strong>Photo.</strong> Take or upload a picture of the front of your house.</li>
-      <li id="guide2"><strong>Size.</strong> Mark something you know the width of — a garage door or the front door.</li>
+      <li id="guide2"><strong>Size.</strong> Drag straight across a garage door or the front door, from the left edge to the right edge.</li>
       <li id="guide3"><strong>Lights.</strong> Pick a tool and a color, then trace where you want lights.</li>
       <li id="guide4"><strong>Estimate.</strong> Check the price range. It’s an estimate until we review it.</li>
       <li id="guide5"><strong>Send.</strong> Enter your info and send. We’ll text you a final quote.</li>
@@ -129,6 +132,20 @@ button.mini.on{background:var(--accent);color:#1a1200;border-color:var(--accent)
   <div class="card" id="drawCard">
     <h2>Mark a width, then trace lights</h2>
     <p class="hint" id="toolHint">Tap each bend. Straight lines connect the taps. Tap Done when it looks right.</p>
+    <div class="scale-help" id="scaleHelp">
+      <svg viewBox="0 0 132 78" aria-hidden="true">
+        <rect x="8" y="10" width="70" height="52" rx="2" fill="#e7e1d6" stroke="#8d8374" stroke-width="2"/>
+        <line x1="8" y1="28" x2="78" y2="28" stroke="#c8c0b4" stroke-width="2"/>
+        <line x1="8" y1="44" x2="78" y2="44" stroke="#c8c0b4" stroke-width="2"/>
+        <line x1="18" y1="36" x2="68" y2="36" stroke="#3dd68c" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="68,36 60,32 60,40" fill="#3dd68c"/>
+        <polygon points="18,36 26,32 26,40" fill="#3dd68c"/>
+        <line x1="92" y1="14" x2="124" y2="62" stroke="#ff8f6b" stroke-width="3" stroke-linecap="round"/>
+        <line x1="98" y1="20" x2="108" y2="30" stroke="#ff8f6b" stroke-width="3" stroke-linecap="round"/>
+        <line x1="108" y1="20" x2="98" y2="30" stroke="#ff8f6b" stroke-width="3" stroke-linecap="round"/>
+      </svg>
+      <p><strong>Straight across.</strong> Touch the left edge of the garage door and the right edge, in a level line. Don’t go corner to corner.</p>
+    </div>
     <label for="scaleRef">Something you know the width of</label>
     <select id="scaleRef">
       <option value="garage2">2-car garage door (16 ft wide)</option>
@@ -141,7 +158,8 @@ button.mini.on{background:var(--accent);color:#1a1200;border-color:var(--accent)
       <input id="customFeet" type="number" inputmode="decimal" min="1" max="80" step="0.5" placeholder="16"/>
     </div>
     <button type="button" class="btn secondary" id="markScaleBtn" style="margin-top:0">Mark this width on the photo</button>
-    <p class="hint" id="scaleState" style="margin:8px 0 10px">Scale not set yet.</p>
+    <p class="hint" id="scaleState" style="margin:8px 0 4px">Scale not set yet.</p>
+    <p class="err hidden" id="scaleWarn">That line is tilted. Redo it straight across, from the left edge to the right edge — not corner to corner.</p>
     <div class="modes" id="lineModes">
       <button type="button" class="mini on" id="modeStraight">Straight (point to point)</button>
       <button type="button" class="mini" id="modeFreehand">Freehand (curves)</button>

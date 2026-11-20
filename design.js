@@ -40,7 +40,7 @@
     tree: 'Drag from the ground up the trunk. Tap Edit, then drag the side dot so the trunk thickness matches the tree.',
     bush: 'Press on the bush and drag across it. That sets how wide and how tall the wrap is.',
     select: 'Tap a string of lights to change its color or delete it. Drag a white dot to adjust it.',
-    scale: 'Drag a straight line from one side of the garage door or front door to the other.'
+    scale: 'Drag straight across, from the left edge to the right edge. Keep the line level. Not corner to corner.'
   };
   var COLOR_STYLES = {
     warm: ['#ffd7a1'],
@@ -57,6 +57,7 @@
   var photo = null;
   var elements = [];
   var scaleMark = null;
+  var scaleAttempt = null;
   var draft = null;
   var undoStack = [];
   var selectedId = null;
@@ -309,7 +310,7 @@
     ];
     var tips = [
       'Tap Take a photo or Choose a photo. A straight-on picture of the front works best.',
-      'Choose a garage door or the front door, then drag across it on the photo.',
+      'Drag straight across the garage door or front door, left edge to right edge. Keep it level — not corner to corner.',
       toolTip() + ' Undo takes back the last tap or stroke. Pinch, or use + and −, to zoom.',
       toolTip() + ' Scroll down for the price range. It’s an estimate until we review it.',
       'Add your name, phone, and address, then tap Send my design. We’ll text you. Nothing is emailed to you.'
@@ -632,9 +633,12 @@
     if (gesture && interactive) drawGesture(ctx, nightMode);
     if (scaleMark) {
       var label = opts.forOwner ? (currentRefLabel() + ' · ' + scaleMark.feet + ' ft') : 'Scale';
-      drawScaleLine(ctx, scaleMark.x1, scaleMark.y1, scaleMark.x2, scaleMark.y2, label, interactive);
-    } else if (gesture && gesture.mode === 'scale') {
-      drawScaleLine(ctx, gesture.x1, gesture.y1, gesture.x2, gesture.y2, 'Scale', interactive);
+      drawScaleLine(ctx, scaleMark.x1, scaleMark.y1, scaleMark.x2, scaleMark.y2, label, interactive, '#e8b84a');
+    } else if (scaleAttempt && interactive) {
+      drawScaleLine(ctx, scaleAttempt.x1, scaleAttempt.y1, scaleAttempt.x2, scaleAttempt.y2, 'Redo level', interactive, '#ff8f6b');
+    }
+    if (gesture && gesture.mode === 'scale') {
+      drawScaleLine(ctx, gesture.x1, gesture.y1, gesture.x2, gesture.y2, 'Scale', interactive, '#e8b84a');
     }
   }
 
@@ -709,9 +713,15 @@
     }
   }
 
-  function drawScaleLine(ctx, x1, y1, x2, y2, label, interactive) {
+  function lineTiltDegrees(x1, y1, x2, y2) {
+    var angle = Math.abs(Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI);
+    if (angle > 90) angle = 180 - angle;
+    return angle;
+  }
+
+  function drawScaleLine(ctx, x1, y1, x2, y2, label, interactive, color) {
     ctx.save();
-    ctx.strokeStyle = '#e8b84a';
+    ctx.strokeStyle = color || '#e8b84a';
     ctx.fillStyle = '#1a1200';
     ctx.lineWidth = uiPx(3, interactive);
     ctx.setLineDash([uiPx(10, interactive), uiPx(7, interactive)]);
@@ -720,7 +730,7 @@
     ctx.lineTo(x2, y2);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#e8b84a';
+    ctx.fillStyle = color || '#e8b84a';
     var r = uiPx(6, interactive);
     ctx.beginPath(); ctx.arc(x1, y1, r, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(x2, y2, r, 0, Math.PI * 2); ctx.fill();
@@ -1086,7 +1096,18 @@
       var len = Math.hypot(gesture.x2 - gesture.x1, gesture.y2 - gesture.y1);
       var feet = currentRefFeet();
       if (len >= 12 && feet > 0) {
+        var tilt = lineTiltDegrees(gesture.x1, gesture.y1, gesture.x2, gesture.y2);
+        if (tilt > 10) {
+          scaleAttempt = { x1: gesture.x1, y1: gesture.y1, x2: gesture.x2, y2: gesture.y2 };
+          $('scaleWarn').classList.remove('hidden');
+          $('scaleWarn').textContent = 'That line is tilted. Redo it straight across, from the left edge to the right edge — not corner to corner.';
+          tool = 'scale';
+          syncUi();
+          return;
+        }
         pushUndo();
+        scaleAttempt = null;
+        $('scaleWarn').classList.add('hidden');
         scaleMark = {
           x1: gesture.x1, y1: gesture.y1, x2: gesture.x2, y2: gesture.y2,
           ref: $('scaleRef').value,

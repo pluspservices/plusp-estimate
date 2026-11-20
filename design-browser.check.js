@@ -231,6 +231,12 @@ async function run() {
   await drag(page, 100, 580, 420, 580);
   const scaleText = await page.$eval('#scaleState', (el) => el.textContent);
   assert.match(scaleText, /Scale set/);
+  await page.click('#markScaleBtn');
+  await drag(page, 100, 470, 420, 700);
+  const tiltWarn = await page.$eval('#scaleWarn', (el) => el.classList.contains('hidden') ? '' : el.textContent);
+  assert.match(tiltWarn, /straight across/i);
+  const scaleStill = await page.$eval('#scaleState', (el) => el.textContent);
+  assert.match(scaleStill, /Scale set/);
 
   await pickColor(page, 'Red/White');
   await page.click('#tool-roofline');
