@@ -8,21 +8,17 @@
  *    Version: New version → Deploy.
  *    Do not use New deployment. That would change the URL.
  *    Execute as: Me. Who has access: Anyone.
- *    If you already ran authorizeMailPermission on 11/18, do not run it again.
+ *    Do not run authorizeMailPermission again if you already did on 11/18.
  *
- * design.html posts action "lead" with the original photo in photos[],
- * plus design_image (JPEG of the lights), owner_estimate (footage for Erik),
- * estimate_low / estimate_high, and source "design form".
- * This script saves both images in the lead folder, writes design-estimate.txt,
- * adds a Pipeline row AND a Client List row ("Awaiting Quote"), and emails
- * pluspservices@gmail.com with both images attached.
- * customer.html leads (no design_image) still do not send this mail.
- *
- * PROSPECTS_SHEET_ID is +P Client Tracker 2026.
- * The old "+P Prospects" file (1lRYPaL2TR1YM1zj5A983FUMdOq74OKo_z3V4CTI84Tk)
- * is the wrong spreadsheet. Do not put that id back.
+ * New quote requests (customer.html and design.html) are written to the
+ * "2026 +P" spreadsheet, Customers tab (CUSTOMERS_SHEET_ID). Columns are
+ * found by the header in row 1. Paid to date and Check are formulas and
+ * are never written. Saved quotes from the owner app still use the
+ * Client Tracker (PROSPECTS_SHEET_ID).
  */
 var PROSPECTS_SHEET_ID = '1c4i2baYHHj2Ck8pGkq1ddoTiAC89FF4Jt2AfxbKjIKk';
+var CUSTOMERS_SHEET_ID = '1o8i8rO1x763kClQg4YKp01OgPaGWcSW0pphOUu1Evd8';
+var CUSTOMERS_TAB = 'Customers';
 var LEAD_PHOTOS_FOLDER_ID = '1c2sHhFctt5DU9ZSOOqfB5-plMKeoNyu6';
 var QUOTES_FOLDER_ID = '1JPLVPb0qwDYKwaKPu86Hdo3jgQZhrj9x';
 var LOGO_FILE_ID = '1idksk7mIhRdB0dpoQ7xc0S5W3bS2i7Un';
@@ -123,50 +119,140 @@ function handleLead(data) {
     lowCell = Number(data.estimate_low);
   }
 
-  var sheet = sheet_();
-  sheet.appendRow([
-    id, stamp, 'New lead', first, last, phone, email, street, subdivision, city, state, zip,
-    notes, saved, folder.getUrl(), lowCell, '', '', stamp, source
-  ]);
+  var customerNotes = notes;
+  if (subdivision) customerNotes = customerNotes ? (customerNotes + '\nSubdivision: ' + subdivision) : ('Subdivision: ' + subdivision);
+  if (state && state !== 'TX') customerNotes = customerNotes ? (customerNotes + '\nState: ' + state) : ('State: ' + state);
 
-  var clientListError = '';
-  try {
-    appendClientList_({
-      first_name: first,
-      last_name: last,
-      phone: phone,
-      street: street,
-      city: city
-    });
-  } catch (listErr) {
-    clientListError = String(listErr && listErr.message ? listErr.message : listErr);
-  }
+  var written = writeCustomerLead_({
+    first: first,
+    last: last,
+    phone: phone,
+    street: street,
+    city: city,
+    subdivision: subdivision,
+    email: email,
+    zip: zip,
+    notes: customerNotes,
+    stamp: stamp,
+    source: source,
+    folderUrl: folder.getUrl(),
+    leadId: id,
+    estimateLow: lowCell
+  });
 
   return {
     ok: true,
-    prospectId: id,
+    prospectId: written.leadId || id,
     photoCount: saved,
     folderUrl: folder.getUrl(),
-    sheetUrl: 'https://docs.google.com/spreadsheets/d/' + PROSPECTS_SHEET_ID + '/edit',
+    sheetUrl: 'https://docs.google.com/spreadsheets/d/' + CUSTOMERS_SHEET_ID + '/edit',
     emailSent: emailSent,
     emailError: emailError,
     designSaveError: designSaveError,
-    clientListError: clientListError
+    customerRow: written.row,
+    deduped: written.deduped
   };
 }
 
-function clientListSheet_() {
-  var ss = SpreadsheetApp.openById(PROSPECTS_SHEET_ID);
-  var sh = ss.getSheetByName('Client List');
-  if (!sh) throw new Error('Client List tab not found on +P Client Tracker');
+/** Customers tab on "2026 +P". Headers are read from row 1 so columns can move. */
+function customersSheet_() {
+  var ss = SpreadsheetApp.openById(CUSTOMERS_SHEET_ID);
+  var sh = ss.getSheetByName(CUSTOMERS_TAB);
+  if (!sh) throw new Error('Customers tab not found on 2026 +P');
   return sh;
 }
 
-function splitStreet_(street) {
-  var s = clean_(street);
-  var m = s.match(/^(\d+)\s+([\s\S]+)$/);
-  if (!m) return { number: '', name: s };
-  return { number: m[1], name: clean_(m[2]) };
+function customerHeaderMap_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var map = {};
+  for (var i = 0; i < headers.length; i++) {
+    var name = clean_(headers[i]).toLowerCase();
+    // K Paid to date and L Check are formulas. Never map them for writing.
+    if (!name || name === 'paid to date' || name === 'check') continue;
+    map[name] = i + 1;
+  }
+  return map;
+}
+
+function findCustomerRowByPhone_(sheet, map, phone) {
+  var want = normalizePhone_(phone);
+  var col = map.phone;
+  if (!want || !col) return -1;
+  var last = sheet.getLastRow();
+  if (last < 2) return -1;
+  var vals = sheet.getRange(2, col, last - 1, 1).getValues();
+  for (var i = 0; i < vals.length; i++) {
+    if (normalizePhone_(vals[i][0]) === want) return i + 2;
+  }
+  return -1;
+}
+
+function firstEmptyCustomerRow_(sheet, map) {
+  var cols = [map.first, map.last, map.phone].filter(function (c) { return c; });
+  var last = Math.max(sheet.getLastRow(), 1);
+  if (last < 2 || !cols.length) return 2;
+  var maxCol = 1;
+  for (var i = 0; i < cols.length; i++) if (cols[i] > maxCol) maxCol = cols[i];
+  var vals = sheet.getRange(2, 1, last - 1, maxCol).getValues();
+  for (var r = 0; r < vals.length; r++) {
+    var empty = true;
+    for (var c = 0; c < cols.length; c++) {
+      if (clean_(vals[r][cols[c] - 1])) { empty = false; break; }
+    }
+    if (empty) return r + 2;
+  }
+  return last + 1;
+}
+
+function cityArea_(city, subdivision) {
+  if (city && subdivision) return city + ' / ' + subdivision;
+  return city || subdivision || '';
+}
+
+function writeMappedCustomer_(sheet, row, map, values) {
+  var names = Object.keys(values);
+  for (var i = 0; i < names.length; i++) {
+    var key = names[i].toLowerCase();
+    if (key === 'paid to date' || key === 'check') continue;
+    var col = map[key];
+    if (!col) continue;
+    sheet.getRange(row, col).setValue(values[names[i]]);
+  }
+}
+
+function writeCustomerLead_(fields) {
+  var sheet = customersSheet_();
+  var map = customerHeaderMap_(sheet);
+  if (!map.first || !map.phone) throw new Error('Customers tab is missing First or Phone');
+  var existing = findCustomerRowByPhone_(sheet, map, fields.phone);
+  var deduped = existing > 0;
+  var row = deduped ? existing : firstEmptyCustomerRow_(sheet, map);
+  var values = {
+    'First': fields.first,
+    'Last': fields.last,
+    'Phone': phoneWithDots_(fields.phone),
+    'Address': fields.street,
+    'City / Area': cityArea_(fields.city, fields.subdivision),
+    'Email': fields.email,
+    'ZIP': fields.zip,
+    'Lead date': fields.stamp,
+    'Source': fields.source,
+    'Photos folder': fields.folderUrl
+  };
+  if (fields.notes) values.Notes = fields.notes;
+  if (fields.estimateLow !== '' && fields.estimateLow != null) values['My estimate'] = fields.estimateLow;
+  var statusCol = map.status;
+  var currentStatus = statusCol ? clean_(sheet.getRange(row, statusCol).getValue()) : '';
+  var statusKey = currentStatus.toLowerCase();
+  if (!deduped || !statusKey || statusKey === 'awaiting quote' || statusKey === 'new lead') {
+    values.Status = 'Awaiting Quote';
+  }
+  var idCol = map['lead id'];
+  var existingId = idCol ? clean_(sheet.getRange(row, idCol).getValue()) : '';
+  if (!existingId) values['Lead ID'] = fields.leadId;
+  writeMappedCustomer_(sheet, row, map, values);
+  return { row: row, deduped: deduped, leadId: existingId || fields.leadId };
 }
 
 function phoneWithDots_(phone) {
@@ -174,19 +260,6 @@ function phoneWithDots_(phone) {
   if (d.length === 11 && d.charAt(0) === '1') d = d.substring(1);
   if (d.length === 10) return d.substring(0, 3) + '.' + d.substring(3, 6) + '.' + d.substring(6);
   return clean_(phone);
-}
-
-function appendClientList_(data) {
-  var parts = splitStreet_(data.street);
-  clientListSheet_().appendRow([
-    'Awaiting Quote',
-    clean_(data.first_name),
-    clean_(data.last_name),
-    phoneWithDots_(data.phone),
-    parts.number,
-    parts.name,
-    clean_(data.city)
-  ]);
 }
 
 function isDesignPhoto_(p) {
@@ -210,7 +283,7 @@ function sendDesignEmail_(data, folder, estimateText) {
   var body = estimateText || 'New light design lead.';
   if (body.length > 18000) body = body.substring(0, 18000) + '\n…(truncated)';
   body += '\n\nDrive folder: ' + folder.getUrl();
-  body += '\nTracker: https://docs.google.com/spreadsheets/d/' + PROSPECTS_SHEET_ID + '/edit';
+  body += '\nCustomers: https://docs.google.com/spreadsheets/d/' + CUSTOMERS_SHEET_ID + '/edit';
   body += '\n\nNothing was emailed to the customer. Review the design, then text them a final quote.';
   var attachments = [];
   if (data.design_image && data.design_image.data) {
