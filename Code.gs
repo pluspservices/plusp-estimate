@@ -188,21 +188,18 @@ function findCustomerRowByPhone_(sheet, map, phone) {
   return -1;
 }
 
-function firstEmptyCustomerRow_(sheet, map) {
-  var cols = [map.first, map.last, map.phone].filter(function (c) { return c; });
+function firstEmptyCustomerRow_(sheet) {
+  // Never reuse a gap. Append after the last row that has any real value in A–L.
+  // getValues() turns a formula that displays blank into "", so those rows are skipped.
   var last = Math.max(sheet.getLastRow(), 1);
-  if (last < 2 || !cols.length) return 2;
-  var maxCol = 1;
-  for (var i = 0; i < cols.length; i++) if (cols[i] > maxCol) maxCol = cols[i];
-  var vals = sheet.getRange(2, 1, last - 1, maxCol).getValues();
-  for (var r = 0; r < vals.length; r++) {
-    var empty = true;
-    for (var c = 0; c < cols.length; c++) {
-      if (clean_(vals[r][cols[c] - 1])) { empty = false; break; }
+  if (last < 2) return 2;
+  var vals = sheet.getRange(2, 1, last - 1, 12).getValues();
+  for (var r = vals.length - 1; r >= 0; r--) {
+    for (var c = 0; c < 12; c++) {
+      if (clean_(vals[r][c])) return r + 3;
     }
-    if (empty) return r + 2;
   }
-  return last + 1;
+  return 2;
 }
 
 function cityArea_(city, subdivision) {
@@ -227,7 +224,7 @@ function writeCustomerLead_(fields) {
   if (!map.first || !map.phone) throw new Error('Customers tab is missing First or Phone');
   var existing = findCustomerRowByPhone_(sheet, map, fields.phone);
   var deduped = existing > 0;
-  var row = deduped ? existing : firstEmptyCustomerRow_(sheet, map);
+  var row = deduped ? existing : firstEmptyCustomerRow_(sheet);
   var values = {
     'First': fields.first,
     'Last': fields.last,
