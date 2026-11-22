@@ -191,9 +191,9 @@ async function run() {
   const customer = fs.readFileSync(path.join(ROOT, 'customer.html'), 'utf8');
   assert.match(customer, /href="design\.html"/);
   assert.match(customer, /action:\s*'lead'/);
-  assert.match(customer, /AKfycbzbvvFGqolPI0zKlmWQhngCW/);
+  assert.match(customer, /prospects-api\.js/);
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-  assert.match(sw, /plusp-estimate-v37/);
+  assert.match(sw, /plusp-estimate-v40/);
   assert.match(sw, /design\.html/);
 
   const house = path.join(SHOTS, 'sample-house.png');
@@ -493,6 +493,104 @@ async function run() {
   await page.goto(origin + '/customer.html', { waitUntil: 'domcontentloaded' });
   const link = await page.$eval('a[href="design.html"]', (a) => a.textContent);
   assert.match(link, /Design your lights/);
+
+  async function stubCustomer(scriptResult, scriptReject) {
+    await page.goto(origin + '/customer.html', { waitUntil: 'domcontentloaded' });
+    await page.evaluate((result, reject) => {
+      window.__sentUrl = '';
+      window.__mails = [];
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        const u = String(url);
+        opts = opts || {};
+        if (u.indexOf('script.google.com') !== -1) {
+          window.__sentUrl = u;
+          if (reject) return Promise.reject(new Error('network down'));
+          return Promise.resolve(new Response(JSON.stringify(result), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+        if (u.indexOf('web3forms.com') !== -1) {
+          let payload = {};
+          try { payload = JSON.parse(opts.body); } catch (err) {}
+          window.__mails.push(payload);
+          return Promise.resolve(new Response('{"success":true}', {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+        return orig.apply(this, arguments);
+      };
+    }, scriptResult, !!scriptReject);
+  }
+  async function fillCustomer() {
+    await page.evaluate(() => {
+      document.getElementById('firstName').value = 'Sam';
+      document.getElementById('lastName').value = 'Sample';
+      document.getElementById('phone').value = '(555) 010-0199';
+      document.getElementById('street').value = '100 Example Lane';
+      document.getElementById('city').value = 'Prosper';
+      document.getElementById('zip').value = '75078';
+      document.getElementById('email').value = 'sam.sample@example.com';
+      document.getElementById('notes').value = 'Gate code 1234';
+      document.getElementById('quoteForm').requestSubmit();
+    });
+    await page.waitForFunction(() => !document.getElementById('thanksCard').classList.contains('hidden'));
+  }
+
+  await stubCustomer({ ok: true, photoCount: 1, folderUrl: 'https://drive.google.com/drive/folders/abc' });
+  await fillCustomer();
+  let mail = await page.evaluate(() => window.__mails[0]);
+  let thanksLead = await page.$eval('#thanksLead', (el) => el.textContent);
+  let quoteErr = await page.$eval('#formErr', (el) => el.classList.contains('hidden') ? '' : el.textContent);
+  assert.equal(quoteErr, '');
+  assert.match(thanksLead, /quote request was sent/);
+  assert.equal(mail.subject.indexOf('SAVE FAILED'), -1);
+  assert.match(mail.message, /Photos saved: 1/);
+  assert.match(mail.message, /100 Example Lane/);
+  assert.match(mail.message, /Gate code 1234/);
+  const sentUrl = await page.evaluate(() => window.__sentUrl);
+  assert.match(sentUrl, /AKfycbyw52oCbvejmA3aIdUtRtY8NcnPC0ceNXtvmW2TaKsNQJUpg8SEmF625IcNkho4kC14/);
+
+  await stubCustomer({ ok: true, photoCount: 0, photosFailed: true, error: 'Photos were attached but none saved to Drive.' });
+  const photoInput = await page.$('#photos');
+  await photoInput.uploadFile(house);
+  await page.waitForFunction(() => document.querySelectorAll('#preview img').length > 0);
+  await fillCustomer();
+  mail = await page.evaluate(() => window.__mails[0]);
+  thanksLead = await page.$eval('#thanksLead', (el) => el.textContent);
+  const thanksExtra = await page.$eval('#thanksExtra', (el) => el.textContent);
+  quoteErr = await page.$eval('#formErr', (el) => el.classList.contains('hidden') ? '' : el.textContent);
+  assert.equal(quoteErr, '');
+  assert.match(thanksLead, /photos did not save/i);
+  assert.match(thanksExtra, /995-3002/);
+  assert.equal(mail.subject.indexOf('SAVE FAILED'), -1);
+  assert.match(mail.message, /Photos saved: 0/);
+
+  await stubCustomer({ ok: false, error: 'Customers tab is missing', photoCount: 0 });
+  await fillCustomer();
+  mail = await page.evaluate(() => window.__mails[0]);
+  thanksLead = await page.$eval('#thanksLead', (el) => el.textContent);
+  const formHidden = await page.$eval('#formCard', (el) => el.classList.contains('hidden'));
+  quoteErr = await page.$eval('#formErr', (el) => el.classList.contains('hidden') ? '' : el.textContent);
+  assert.equal(formHidden, true);
+  assert.equal(quoteErr, '');
+  assert.match(thanksLead, /we got your request/i);
+  assert.match(mail.subject, /^SAVE FAILED/);
+  assert.match(mail.message, /555\) 010-0199/);
+  assert.match(mail.message, /100 Example Lane/);
+  assert.match(mail.message, /sam\.sample@example.com/);
+  assert.match(mail.message, /Gate code 1234/);
+  assert.match(mail.message, /Customers tab is missing/);
+
+  await stubCustomer(null, true);
+  await fillCustomer();
+  mail = await page.evaluate(() => window.__mails[0]);
+  thanksLead = await page.$eval('#thanksLead', (el) => el.textContent);
+  assert.match(thanksLead, /we got your request/i);
+  assert.match(mail.subject, /^SAVE FAILED/);
+  assert.match(mail.message, /network down/);
 
   await browser.close();
   server.close();

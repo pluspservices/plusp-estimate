@@ -1,11 +1,12 @@
-const CACHE = 'plusp-estimate-v37';
+const CACHE = 'plusp-estimate-v40';
 const ASSETS = [
   './',
   './index.html',
   './customer.html',
   './design.html',
-  './design.js?v=37',
-  './design-pricing.js?v=37',
+  './prospects-api.js?v=40',
+  './design.js?v=39',
+  './design-pricing.js?v=39',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
@@ -25,7 +26,8 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   // Always try network first for HTML so updates show up
-  if (url.pathname.endsWith('.html') || url.pathname.endsWith('/') || url.pathname.endsWith('/plusp-estimate')) {
+  // prospects-api.js is the one web-app address. Always try the network so a new /exec URL is not stuck in the cache.
+  if (url.pathname.endsWith('.html') || url.pathname.endsWith('/') || url.pathname.endsWith('/plusp-estimate') || url.pathname.endsWith('/prospects-api.js')) {
     e.respondWith(
       fetch(e.request).then((res) => {
         const copy = res.clone();

@@ -106,13 +106,14 @@ textarea{min-height:72px;resize:vertical}
 </div>
 
 <div class="card hidden" id="thanksCard">
-  <p class="ok">Thanks — your quote request was sent to +P Holiday Lighting.</p>
+  <p class="ok" id="thanksLead">Thanks — your quote request was sent to +P Holiday Lighting.</p>
   <p class="hint" style="margin:0" id="thanksExtra">We’ll follow up soon. You can close this page.</p>
 </div>
 
+<script src="prospects-api.js?v=40"></script>
 <script>
 const $ = id => document.getElementById(id);
-const PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
+const PROSPECTS_API = window.PROSPECTS_API;
 const WEB3FORMS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
 let preparedPhotos = [];
 
@@ -172,22 +173,61 @@ $('photos').addEventListener('change', async () => {
   $('submitBtn').textContent = 'Submit quote request';
 });
 
-async function notifyEmail(fields) {
+function savedPhotoCount(data, attached) {
+  if (data && data.photoCount != null && data.photoCount !== '') return Number(data.photoCount) || 0;
+  return attached;
+}
+
+function photosDidNotSave(data, attached) {
+  if (!attached) return false;
+  if (data && data.photosFailed) return true;
+  if (data && data.photoCount != null && data.photoCount !== '' && Number(data.photoCount) === 0) return true;
+  return false;
+}
+
+function showThanks(lead, extra) {
+  $('thanksLead').textContent = lead;
+  $('thanksExtra').textContent = extra;
+  $('formCard').classList.add('hidden');
+  $('thanksCard').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+
+async function notifyEmail(fields, extra) {
+  extra = extra || {};
+  const failed = !!extra.failed;
+  const count = extra.photoCount != null ? extra.photoCount : preparedPhotos.length;
+  const lines = [];
+  if (failed) lines.push('The website could not save this quote request to the spreadsheet. Please add the customer by hand.');
+  lines.push('Name: ' + fields.first_name + ' ' + fields.last_name);
+  lines.push('Phone: ' + (fields.phone || ''));
+  lines.push('Street: ' + (fields.street || ''));
+  lines.push('Subdivision: ' + (fields.subdivision || ''));
+  lines.push('City: ' + (fields.city || ''));
+  lines.push('State: ' + (fields.state || ''));
+  lines.push('ZIP: ' + (fields.zip || ''));
+  lines.push('Email: ' + (fields.email || ''));
+  lines.push('Notes: ' + (fields.notes || '(none)'));
+  lines.push('Photos saved: ' + count);
+  if (extra.folderUrl) lines.push('Drive folder: ' + extra.folderUrl);
+  if (extra.customersError) lines.push('Customers sheet: ' + extra.customersError);
+  if (extra.error) lines.push('Error: ' + extra.error);
   try {
     await fetch('https://api.web3forms.com/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         access_key: WEB3FORMS_KEY,
-        subject: '+P quote request — ' + fields.first_name + ' ' + fields.last_name,
+        subject: (failed ? 'SAVE FAILED — ' : '') + '+P quote request — ' + fields.first_name + ' ' + fields.last_name,
         from_name: fields.first_name + ' ' + fields.last_name,
         name: fields.first_name + ' ' + fields.last_name,
+        email: fields.email || '',
         phone: fields.phone,
         street: fields.street,
         city: fields.city,
         state: fields.state,
         zip: fields.zip,
-        message: 'New lead saved to +P Prospects / Drive. Photos: ' + preparedPhotos.length + '\nNotes: ' + (fields.notes || '(none)')
+        message: lines.join('\n')
       })
     });
   } catch (_) {}
@@ -222,6 +262,9 @@ $('quoteForm').addEventListener('submit', async (e) => {
     notes: $('notes').value.trim(),
     photos: preparedPhotos.map(p => ({ name: p.name, mime: p.mime, data: p.data }))
   };
+  let data = {};
+  let failed = false;
+  let failMessage = '';
   try {
     const res = await fetch(PROSPECTS_API, {
       method: 'POST',
@@ -230,24 +273,42 @@ $('quoteForm').addEventListener('submit', async (e) => {
       redirect: 'follow'
     });
     const text = await res.text();
-    let data = {};
     try { data = JSON.parse(text); } catch (_) {}
     if (!res.ok || data.ok === false) {
-      throw new Error((data && data.error) || ('Send failed (' + res.status + ')'));
+      failed = true;
+      failMessage = (data && data.error) || ('Send failed (' + res.status + ')');
     }
-    notifyEmail(fields);
-    $('thanksExtra').textContent = preparedPhotos.length
-      ? ('Request saved with ' + preparedPhotos.length + ' photo(s). We’ll follow up soon.')
-      : 'We’ll follow up soon. You can close this page.';
-    $('formCard').classList.add('hidden');
-    $('thanksCard').classList.remove('hidden');
-    window.scrollTo(0, 0);
   } catch (err) {
-    $('formErr').textContent = 'Could not send right now. Try again, or text (214) 995-3002. (' + (err && err.message ? err.message : err) + ')';
-    $('formErr').classList.remove('hidden');
-    btn.disabled = false;
-    btn.textContent = 'Submit quote request';
+    failed = true;
+    failMessage = err && err.message ? err.message : String(err);
   }
+  if (failed) {
+    await notifyEmail(fields, {
+      failed: true,
+      photoCount: data && data.photoCount != null ? data.photoCount : preparedPhotos.length,
+      error: failMessage,
+      folderUrl: data && data.folderUrl,
+      customersError: data && data.customersError
+    });
+    showThanks('Thanks — we got your request and will follow up soon.', 'You can close this page. If you attached photos, you can also text them to (214) 995-3002.');
+    return;
+  }
+  const attached = preparedPhotos.length;
+  const count = savedPhotoCount(data, attached);
+  await notifyEmail(fields, {
+    photoCount: count,
+    folderUrl: data.folderUrl,
+    customersError: data.customersError,
+    error: photosDidNotSave(data, attached) ? (data.error || 'Photos were attached but none saved to Drive.') : ''
+  });
+  if (photosDidNotSave(data, attached)) {
+    showThanks('We got your request, but the photos did not save.', 'Please text the photos to (214) 995-3002 so we can quote the house.');
+    return;
+  }
+  showThanks(
+    'Thanks — your quote request was sent to +P Holiday Lighting.',
+    count ? ('Request saved with ' + count + ' photo(s). We’ll follow up soon.') : 'We’ll follow up soon. You can close this page.'
+  );
 });
 </script>
 </body>
