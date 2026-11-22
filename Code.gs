@@ -1,24 +1,30 @@
 /**
  * +P Holiday Lighting — Prospects API
  *
- * DEPLOY (keeps the same web app URL the website already posts to)
- * 1. Open the Apps Script project bound to the +P Client Tracker spreadsheet.
- * 2. Open Code.gs, select all, delete, paste this entire file, and save.
- * 3. Deploy → Manage deployments → pencil on the existing Web app →
- *    Version: New version → Deploy.
- *    Do not use New deployment. That would change the URL.
- *    Execute as: Me. Who has access: Anyone.
- *    If you already ran authorizeMailPermission on 11/18, do not run it again.
- *    The first run may ask to view and edit the 2026 +P spreadsheet. Allow it.
+ * This file does not use the spreadsheet it is bound to. Every spreadsheet
+ * and Drive folder is opened by the ID in the config block below, so the
+ * project can live on 2026 +P (or stand alone) and still reach Client Tracker.
  *
- * Quote requests from customer.html and design.html are written to the
- * 2026 +P spreadsheet, Customers tab, first. Columns are matched by the
- * header in row 1. Paid to date, Check, and any formula column are never
- * written. The same lead is then still added to Client Tracker Pipeline
- * and Client List while ALSO_WRITE_CLIENT_TRACKER is true.
+ * FIRST-TIME SETUP in the new "+P Quote Form" project (permissions do not
+ * carry over from the old Client Tracker script):
+ * 1. Paste this whole file into Code.gs and save.
+ * 2. Choose setupQuoteForm in the function menu and click Run.
+ * 3. Approve the permissions, including Advanced → Go to +P Quote Form.
+ * 4. Deploy → New deployment → Web app → Execute as Me → Anyone.
+ * 5. Copy the web app URL that ends in /exec.
+ *
+ * There are no script properties and no triggers to copy.
+ * Leave the old Client Tracker web app deployed until the website is
+ * pointed at this new URL and a submission shows up on Customers.
+ *
+ * Quote requests are written to the 2026 +P Customers tab first. Columns
+ * are matched by the header in row 1. Paid to date, Check, and any formula
+ * column are never written. While ALSO_WRITE_CLIENT_TRACKER is true, the
+ * same lead is also written to Client Tracker Pipeline and Client List.
  *
  * In 2027: point CUSTOMERS_SHEET_ID at the copied "2027 +P" sheet and
- * set ALSO_WRITE_CLIENT_TRACKER to false.
+ * set ALSO_WRITE_CLIENT_TRACKER to false. After that, Client Tracker
+ * can be deleted. This script will not look for it.
  *
  * design.html posts action "lead" with the original photo in photos[],
  * plus design_image (JPEG of the lights), owner_estimate, and source
@@ -76,6 +82,7 @@ function trackerWritesEnabled_() {
 }
 
 function sheet_() {
+  // Client Tracker is opened by its spreadsheet ID, not as the file this project is attached to.
   var ss = SpreadsheetApp.openById(PROSPECTS_SHEET_ID);
   return ss.getSheetByName('Pipeline') || ss.getSheets()[0];
 }
@@ -859,7 +866,45 @@ function sendDesignEmail_(data, folder, estimateText, savedCount) {
   MailApp.sendEmail(mail);
 }
 
-/** Run once from the editor (Run ▶) to grant "Send email as you", then redeploy. */
+/**
+ * Run once from the new project (Run ▶) before the first deploy.
+ * Asks Google for every permission this script needs. Nothing is saved
+ * in script properties, and no trigger is created.
+ * The mail and Docs grants from the old Client Tracker project do not apply here.
+ */
+function setupQuoteForm() {
+  var lines = [];
+  var customers = SpreadsheetApp.openById(CUSTOMERS_SHEET_ID);
+  if (!customers.getSheetByName(CUSTOMERS_TAB)) throw new Error('Customers tab not found on 2026 +P');
+  lines.push('Opened 2026 +P (' + customers.getName() + '), tab ' + CUSTOMERS_TAB + '.');
+
+  if (trackerWritesEnabled_()) {
+    var tracker = SpreadsheetApp.openById(PROSPECTS_SHEET_ID);
+    if (!tracker.getSheetByName('Pipeline')) throw new Error('Pipeline tab not found on Client Tracker');
+    if (!tracker.getSheetByName('Client List')) throw new Error('Client List tab not found on Client Tracker');
+    lines.push('Opened Client Tracker (' + tracker.getName() + '), Pipeline and Client List.');
+  } else {
+    lines.push('Client Tracker writes are off, so that spreadsheet was not opened.');
+  }
+
+  lines.push('Lead photos folder: ' + DriveApp.getFolderById(LEAD_PHOTOS_FOLDER_ID).getName() + '.');
+  lines.push('Quotes folder: ' + DriveApp.getFolderById(QUOTES_FOLDER_ID).getName() + '.');
+  lines.push('Logo file: ' + DriveApp.getFileById(LOGO_FILE_ID).getName() + '.');
+
+  MailApp.sendEmail(OWNER_EMAIL, '+P Quote Form setup', 'The new +P Quote Form script can send email. You can ignore this message.');
+  lines.push('Sent a test email to ' + OWNER_EMAIL + '.');
+
+  var doc = DocumentApp.create('+P Quote Form permission check');
+  DriveApp.getFileById(doc.getId()).setTrashed(true);
+  lines.push('Google Docs permission is on. The check document was moved to trash.');
+  lines.push('Setup finished. Deploy this project as a web app, then send the /exec address.');
+
+  var report = lines.join('\n');
+  Logger.log(report);
+  return report;
+}
+
+/** Kept so an older note that says "run authorizeMailPermission" still works. setupQuoteForm is the one to run. */
 function authorizeMailPermission() {
   MailApp.sendEmail(OWNER_EMAIL, '+P mail permission check', 'Apps Script can email design leads to this inbox. You can ignore this message.');
 }
@@ -1217,7 +1262,7 @@ function writeEstimateTextFallback_(folder, data, snap, stamp, title) {
   return folder.getUrl();
 }
 
-/** Run once from the editor (Run ▶) to grant Google Docs permission, then Redeploy. */
+/** Kept so an older note that says "run authorizeDocsPermission" still works. setupQuoteForm is the one to run. */
 function authorizeDocsPermission() {
   var doc = DocumentApp.create('+P Docs permission check');
   DriveApp.getFileById(doc.getId()).setTrashed(true);

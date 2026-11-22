@@ -110,9 +110,10 @@ textarea{min-height:72px;resize:vertical}
   <p class="hint" style="margin:0" id="thanksExtra">We’ll follow up soon. You can close this page.</p>
 </div>
 
+<script src="prospects-api.js?v=39"></script>
 <script>
 const $ = id => document.getElementById(id);
-const PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
+const PROSPECTS_API = window.PROSPECTS_API;
 const WEB3FORMS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
 let preparedPhotos = [];
 

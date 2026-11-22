@@ -3,7 +3,7 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var P = window.PlusPPricing;
-  var PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
+  var PROSPECTS_API = window.PROSPECTS_API;
   var WEB3FORMS_KEY = '4f873478-15cb-4e7a-9c1b-4273efd977da';
   var LINE_TOOLS = { roofline: 1, window: 1, door: 1, garage: 1, archway: 1 };
   var OPEN_BOTTOM = { door: 1, garage: 1, archway: 1 };

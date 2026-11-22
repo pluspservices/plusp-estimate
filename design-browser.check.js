@@ -191,9 +191,9 @@ async function run() {
   const customer = fs.readFileSync(path.join(ROOT, 'customer.html'), 'utf8');
   assert.match(customer, /href="design\.html"/);
   assert.match(customer, /action:\s*'lead'/);
-  assert.match(customer, /AKfycbzbvvFGqolPI0zKlmWQhngCW/);
+  assert.match(customer, /prospects-api\.js/);
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-  assert.match(sw, /plusp-estimate-v38/);
+  assert.match(sw, /plusp-estimate-v39/);
   assert.match(sw, /design\.html/);
 
   const house = path.join(SHOTS, 'sample-house.png');

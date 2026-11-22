@@ -349,6 +349,7 @@ textarea{min-height:64px;resize:vertical}
   <ul class="savedList" id="savedList"></ul>
 </div>
 
+<script src="prospects-api.js?v=39"></script>
 <script>
 const FIRST = { roof:5, ball:25, glue:6, tub:50 };
 const REHANG = { roof:2.5, ball:25, glue:3.5 };
@@ -1200,7 +1201,7 @@ if ($('copyDesignLink')) $('copyDesignLink').addEventListener('click', async () 
   }
 });
 
-const PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
+const PROSPECTS_API = window.PROSPECTS_API;
 const QUOTE_STORE = 'plusp_saved_quotes_v1';
 let currentProspectId = '';
 let cloudProspects = [];
@@ -1601,7 +1602,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=38').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=39').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
