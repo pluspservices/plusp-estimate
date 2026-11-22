@@ -1330,11 +1330,47 @@
     return parts.join('\n');
   }
 
-  function showThanks() {
+  function showThanks(note) {
+    if (note) $('thanksLead').textContent = note;
     $('photoCard').classList.add('hidden');
     $('designer').hidden = true;
     $('thanksCard').classList.remove('hidden');
     window.scrollTo(0, 0);
+  }
+
+  function savedPhotoCount(data, attached) {
+    if (data && data.photoCount != null && data.photoCount !== '') return Number(data.photoCount) || 0;
+    return attached;
+  }
+
+  function photosDidNotSave(data, attached) {
+    if (!attached) return false;
+    if (data && data.photosFailed) return true;
+    if (data && data.photoCount != null && data.photoCount !== '' && Number(data.photoCount) === 0) return true;
+    return false;
+  }
+
+  function designNotifyText(ownerText, fields, data, failed, errText) {
+    var count = (data && data.photoCount != null && data.photoCount !== '') ? data.photoCount : (failed ? 'not confirmed' : 'see attachments');
+    var lines = [];
+    if (failed) lines.push('The website could not save this design to the spreadsheet. Please add the customer by hand.');
+    lines.push('Name: ' + fields.first_name + ' ' + fields.last_name);
+    lines.push('Phone: ' + (fields.phone || ''));
+    lines.push('Street: ' + (fields.street || ''));
+    lines.push('City: ' + (fields.city || ''));
+    lines.push('State: ' + (fields.state || ''));
+    lines.push('ZIP: ' + (fields.zip || ''));
+    lines.push('Email: ' + (fields.email || ''));
+    lines.push('Notes: ' + (fields.notes || '(none)'));
+    lines.push('Photos saved to Drive: ' + count);
+    if (data && data.folderUrl) lines.push('Drive folder: ' + data.folderUrl);
+    if (data && data.customersError) lines.push('Customers sheet: ' + data.customersError);
+    if (errText) lines.push('Error: ' + errText);
+    lines.push('');
+    lines.push(ownerText || '');
+    lines.push('');
+    lines.push('Nothing was sent to the customer.');
+    return lines.join('\n');
   }
 
   function fallbackEmail(subject, name, text, designUrl, originalUrl) {
@@ -1433,6 +1469,38 @@
       photos: [originalPhoto, designPhoto],
       design_image: designPhoto
     };
+    function finishSaved(data) {
+      var attached = (fields.photos || []).length;
+      var failedPhotos = photosDidNotSave(data, attached);
+      var notify = null;
+      if (data.emailSent !== true) {
+        notify = fallbackEmail(
+          '+P light design — ' + last + ', ' + first,
+          first + ' ' + last,
+          designNotifyText(ownerText, fields, data, false, failedPhotos ? (data.error || 'Photos were attached but none saved to Drive.') : ''),
+          designUrl,
+          originalUrl
+        );
+      }
+      return Promise.resolve(notify).then(function () {
+        if (failedPhotos) {
+          showThanks('We received your design, but the photos did not save. Please text them to (214) 995-3002.');
+        } else {
+          showThanks();
+        }
+      });
+    }
+    function finishFailed(data, errText) {
+      return fallbackEmail(
+        'SAVE FAILED — +P light design — ' + last + ', ' + first,
+        first + ' ' + last,
+        designNotifyText(ownerText, fields, data, true, errText),
+        designUrl,
+        originalUrl
+      ).then(function () {
+        showThanks();
+      });
+    }
     fetch(PROSPECTS_API, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1442,24 +1510,17 @@
       return res.text().then(function (text) {
         var data = {};
         try { data = JSON.parse(text); } catch (err) {}
-        if (!res.ok || data.ok === false) {
-          throw new Error((data && data.error) || ('Send failed (' + res.status + ')'));
-        }
+        data._httpOk = !!res.ok;
+        data._status = res.status;
         return data;
       });
     }).then(function (data) {
-      if (data.emailSent === true) return null;
-      var text = ownerText;
-      if (data.folderUrl) text += '\n\nDrive folder: ' + data.folderUrl;
-      text += '\n\nNothing was sent to the customer.';
-      return fallbackEmail('+P light design — ' + last + ', ' + first, first + ' ' + last, text, designUrl, originalUrl);
-    }).then(function () {
-      showThanks();
+      if (!data._httpOk || data.ok === false) {
+        return finishFailed(data, (data && data.error) || ('Send failed (' + data._status + ')'));
+      }
+      return finishSaved(data);
     }).catch(function (err) {
-      showErr('formErr', 'Could not send right now. Try again, or text (214) 995-3002. (' + (err && err.message ? err.message : err) + ')');
-      btn.disabled = false;
-      btn.textContent = 'Send my design';
-      sending = false;
+      return finishFailed(null, err && err.message ? err.message : String(err));
     });
   }
 
