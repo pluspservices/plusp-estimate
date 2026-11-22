@@ -381,10 +381,12 @@ test('the site keeps the same Apps Script URL and still emails when a save fails
   const index = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
   const apiFile = fs.readFileSync(path.join(ROOT, 'prospects-api.js'), 'utf8');
-  const oldUrl = 'AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg';
-  assert.match(apiFile, new RegExp(oldUrl));
-  assert.equal((apiFile.match(new RegExp(oldUrl, 'g')) || []).length, 1);
-  [customer, design, index, sw].forEach((file) => assert.equal(file.includes(oldUrl), false));
+  const webAppId = 'AKfycbyw52oCbvejmA3aIdUtRtY8NcnPC0ceNXtvmW2TaKsNQJUpg8SEmF625IcNkho4kC14';
+  const retiredId = 'AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg';
+  assert.match(apiFile, new RegExp(webAppId));
+  assert.equal((apiFile.match(new RegExp(webAppId, 'g')) || []).length, 1);
+  [customer, design, index, sw, apiFile].forEach((file) => assert.equal(file.includes(retiredId), false));
+  [customer, design, index, sw].forEach((file) => assert.equal(file.includes(webAppId), false));
   assert.match(customer, /prospects-api\.js/);
   assert.match(index, /prospects-api\.js/);
   assert.match(design, /window\.PROSPECTS_API/);

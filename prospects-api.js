@@ -1,4 +1,3 @@
 // The one web-app address for the quote form, the design page, and the estimate app.
-// Leave this URL in place until Erik sends the new Apps Script address that ends in /exec.
-// Then replace only this line.
-window.PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/exec';
+// This is the +P Quote Form web app bound to the 2026 +P spreadsheet.
+window.PROSPECTS_API = 'https://script.google.com/macros/s/AKfycbyw52oCbvejmA3aIdUtRtY8NcnPC0ceNXtvmW2TaKsNQJUpg8SEmF625IcNkho4kC14/exec';

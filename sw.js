@@ -1,10 +1,10 @@
-const CACHE = 'plusp-estimate-v39';
+const CACHE = 'plusp-estimate-v40';
 const ASSETS = [
   './',
   './index.html',
   './customer.html',
   './design.html',
-  './prospects-api.js?v=39',
+  './prospects-api.js?v=40',
   './design.js?v=39',
   './design-pricing.js?v=39',
   './manifest.webmanifest',

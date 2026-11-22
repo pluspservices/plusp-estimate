@@ -193,7 +193,7 @@ async function run() {
   assert.match(customer, /action:\s*'lead'/);
   assert.match(customer, /prospects-api\.js/);
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-  assert.match(sw, /plusp-estimate-v39/);
+  assert.match(sw, /plusp-estimate-v40/);
   assert.match(sw, /design\.html/);
 
   const house = path.join(SHOTS, 'sample-house.png');
@@ -551,7 +551,7 @@ async function run() {
   assert.match(mail.message, /100 Example Lane/);
   assert.match(mail.message, /Gate code 1234/);
   const sentUrl = await page.evaluate(() => window.__sentUrl);
-  assert.match(sentUrl, /AKfycbzbvvFGqolPI0zKlmWQhngCW-oDjz7mSR6hZflztejyeS_NxzVteUOxJE3gH_MOJO3gcg/);
+  assert.match(sentUrl, /AKfycbyw52oCbvejmA3aIdUtRtY8NcnPC0ceNXtvmW2TaKsNQJUpg8SEmF625IcNkho4kC14/);
 
   await stubCustomer({ ok: true, photoCount: 0, photosFailed: true, error: 'Photos were attached but none saved to Drive.' });
   const photoInput = await page.$('#photos');

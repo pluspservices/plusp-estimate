@@ -349,7 +349,7 @@ textarea{min-height:64px;resize:vertical}
   <ul class="savedList" id="savedList"></ul>
 </div>
 
-<script src="prospects-api.js?v=39"></script>
+<script src="prospects-api.js?v=40"></script>
 <script>
 const FIRST = { roof:5, ball:25, glue:6, tub:50 };
 const REHANG = { roof:2.5, ball:25, glue:3.5 };
@@ -1602,7 +1602,7 @@ calc();
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js?v=39').then((reg) => {
+    navigator.serviceWorker.register('./sw.js?v=40').then((reg) => {
       reg.update().catch(() => {});
     }).catch(() => {});
   });
